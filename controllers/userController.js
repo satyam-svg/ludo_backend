@@ -1,24 +1,38 @@
+const { PrismaClient } = require('../generated/prisma');
+const prisma = new PrismaClient();
 const nodemailer = require('nodemailer');
 const otpGenerator = require('otp-generator');
 
-// In-memory storage for OTPs (use database in production)
 const otpStore = {};
 
-// Create transporter with your Gmail credentials
+// Setup Nodemailer transporter
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: 'satyammaurya9620@gmail.com',
-    pass: 'ycli dqri gfje dtwi' // Your app password
+    pass: 'ycli dqri gfje dtwi'
   }
 });
 
 const sendOtp = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
+    }
+
+    // Check if user exists
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    // If not, create a new user
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          email,
+          wallet: 0,
+        }
+      });
     }
 
     // Generate 6-digit OTP
@@ -29,13 +43,13 @@ const sendOtp = async (req, res) => {
       digits: true
     });
 
-    // Store OTP with expiration (5 minutes)
+    // Store OTP with expiration
     otpStore[email] = {
       otp,
       expiresAt: Date.now() + 300000 // 5 minutes
     };
 
-    // Email configuration
+    // Email content
     const mailOptions = {
       from: '"Ludo Kingdom" <satyammaurya9620@gmail.com>',
       to: email,
@@ -59,46 +73,54 @@ const sendOtp = async (req, res) => {
       `
     };
 
-    // Send email
     await transporter.sendMail(mailOptions);
-    
-    res.status(200).json({ 
+
+    return res.status(200).json({
       message: 'OTP sent successfully',
-      expiresIn: 300 // 5 minutes in seconds
+      expiresIn: 300
     });
-    
+
   } catch (error) {
-    console.error('Error sending OTP:', error);
-    res.status(500).json({ error: 'Failed to send OTP' });
+    console.error('Error in sendOtp:', error);
+    return res.status(500).json({ error: 'Failed to send OTP' });
   }
 };
 
-const verifyOtp = (req, res) => {
+const verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
-  
+
   if (!email || !otp) {
     return res.status(400).json({ error: 'Email and OTP are required' });
   }
-  
+
   const storedOtp = otpStore[email];
-  
+
   if (!storedOtp) {
     return res.status(400).json({ error: 'OTP not found or expired' });
   }
-  
-  // Check expiration
+
   if (Date.now() > storedOtp.expiresAt) {
     delete otpStore[email];
     return res.status(400).json({ error: 'OTP expired' });
   }
-  
-  // Verify OTP
+
   if (storedOtp.otp === otp) {
     delete otpStore[email];
-    return res.status(200).json({ message: 'OTP verified successfully' });
+    
+    // Fetch user after verification
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    return res.status(200).json({
+      message: 'OTP verified successfully',
+      user: {
+        id: user.id,
+        email: user.email,
+        wallet: user.wallet
+      }
+    });
   }
-  
-  res.status(400).json({ error: 'Invalid OTP' });
+
+  return res.status(400).json({ error: 'Invalid OTP' });
 };
 
 module.exports = { sendOtp, verifyOtp };
