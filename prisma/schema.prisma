@@ -13,6 +13,7 @@ model User {
   password     String // Changed to required field
   wallet       Float   @default(0)
   referralCode String? @unique
+  role         String  @default("Customer")
 
   // Referral relations
   referrals  Referral[] @relation("Referrer")
