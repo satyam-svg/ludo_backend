@@ -13,8 +13,8 @@ model User {
   password     String
   wallet       Float   @default(0)
   referralCode String? @unique
-  role         String? @default("customer")
-  
+  role         String  @default("Customer")
+
   // Referral relations
   referrals  Referral[] @relation("Referrer")
   referredBy Referral?  @relation("Referee")
