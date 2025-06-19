@@ -2,6 +2,7 @@ const cors = require('cors');
 const express = require('express');
 const userRoutes = require('./routes/userRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumber');
+const walletRoutes = require('./routes/wallet')
 
 const app = express();
 app.use(cors()); // 👈 allows all origins
