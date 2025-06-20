@@ -203,7 +203,7 @@ const login = async (req, res) => {
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-
+    
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     return res.status(200).json({
@@ -234,18 +234,18 @@ const getUserData = async (req, res) => {
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
-  id: true,
-  email: true,
-  wallet: true,
-  referralCode: true,
-  
-}
+        id: true,
+        email: true,
+        wallet: true,
+        referralCode: true,
+      }
 
     });
+    console.log(user);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    res.json(user);
+    return res.status(200).json(user);
   } catch (error) {
     console.error("Token validation error:", error.message);
     res.status(401).json({ error: 'Invalid token' });
