@@ -32,6 +32,24 @@ const authenticateToken = (req, res, next) => {
   next();
 };
 
+const checkWalletBalance = async (id)=>{
+  const user = await prisma.user.findUnique({
+    where: { id: id },
+    select: { wallet: true }
+  });
+
+  return user.wallet;
+}
+
+const updateWalletBalance = async (id, newBalance)=>{
+  const updatedUser = await prisma.user.update({
+    where: { id: id },
+    data: { wallet: newBalance }
+  });
+
+  return ;
+}
+
 // Get wallet balance and recent transactions
 router.get('/balance', authenticateToken, async (req, res) => {
   try {
@@ -499,4 +517,4 @@ router.patch('/admin/withdrawal/:withdrawalId', async (req, res) => {
   }
 });
 
-module.exports = router;
+module.exports = {router,checkWalletBalance, updateWalletBalance};
