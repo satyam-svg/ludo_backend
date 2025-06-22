@@ -1,3 +1,5 @@
+const { checkWalletBalance, updateWalletBalance } = require("../routes/wallet");
+
 class SixKingGame {
     constructor(gameId, hostPlayer, stake) {
       this.gameId = gameId;
@@ -50,7 +52,7 @@ class SixKingGame {
       if (this.state === 'finished') {
         throw new Error('Game has already finished');
       }
-  
+      
       this.state = 'playing';
       this.currentTurn = this.players[Math.floor(Math.random() * 2)].id;
       
@@ -73,7 +75,8 @@ class SixKingGame {
         throw new Error('Not your turn');
       }
   
-      const diceValue = Math.floor(Math.random() * 6) + 1;
+    //   const diceValue = Math.floor(Math.random() * 6) + 1;
+      const diceValue = 6;
       this.rollCount++;
   
       console.log(`🎲 ${playerId} rolled ${diceValue} in game ${this.gameId}`);
@@ -123,15 +126,24 @@ class SixKingGame {
       this.updatePlayerWallets(winnerId);
     }
   
-    updatePlayerWallets(winnerId) {
-      // TODO: Replace with your existing wallet update logic
-      const winner = this.players.find(p => p.id === winnerId);
-      const loser = this.getOtherPlayer(winnerId);
-      
-      console.log(`💰 Wallet update needed:`);
-      console.log(`  Winner ${winner.name} (${winnerId}): +₹${this.stake * 2}`);
-    //   console.log(`  Loser ${loser.name} (${loser.id}): -₹${this.stake}`);
-    }
+    async updatePlayerWallets(winnerId) {
+        try {
+          const winner = this.players.find(p => p.id === winnerId);
+          const loser = this.getOtherPlayer(winnerId);
+          
+          console.log(`💰 Wallet update needed:`);
+          console.log(`  Winner ${winner.name} (${winnerId}): +₹${this.stake * 2}`);
+          
+          // ✅ Properly await async functions
+          const currentBalance = await checkWalletBalance(winnerId);
+          const newBalance = currentBalance + (this.stake * 2);
+          
+          await updateWalletBalance(winnerId, newBalance);
+          
+        } catch (error) {
+          console.error('Error updating player wallets:', error);
+        }
+      }
   
     getOtherPlayer(playerId) {
       return this.players.find(p => p.id !== playerId);
