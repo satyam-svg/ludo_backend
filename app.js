@@ -3,7 +3,7 @@ const express = require('express');
 const userRoutes = require('./routes/userRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumber');
 const walletRoutes = require('./routes/wallet')
-
+const paymentRoutes=require('./routes/paymentRoutes')
 const app = express();
 app.use(cors()); // 👈 allows all origins
 app.use(express.json());
@@ -11,6 +11,7 @@ app.use(express.json());
 app.use('/api/users', userRoutes);
 app.use('/api/lucky-number', luckyNumberRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/payment', paymentRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
