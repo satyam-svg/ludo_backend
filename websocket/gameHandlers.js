@@ -1,4 +1,5 @@
 const GameService = require('../services/GameService');
+const {updateWalletBalance, checkWalletBalance} = require('../routes/wallet')
 
 function handleMessage(ws, type, data) {
   try {
@@ -41,62 +42,79 @@ function handleMessage(ws, type, data) {
   }
 }
 
-function handleCreateGame(ws, data) {
-  const { playerId, playerName, stake, gameType } = data;
+async function handleCreateGame(ws, data) {
+    const { playerId, playerName, stake, gameType } = data;
+    
+    console.log(`🎮 Creating game for player ${playerName} with stake ₹${stake}`);
+    
+    if (gameType !== 'six_king') {
+      sendError(ws, 'INVALID_GAME_TYPE', 'Only six_king game type is supported');
+      return;
+    }
   
-  console.log(`🎮 Creating game for player ${playerName} with stake ₹${stake}`);
+    try {
+      // ✅ Properly await async function
+      const userWallet = await GameService.getUserWallet(playerId);
+      
+      if (userWallet < parseInt(stake)) {
+        sendError(ws, 'INSUFFICIENT_BALANCE', 'Please deposit to continue');
+        return;
+      }
   
-  if (gameType !== 'six_king') {
-    sendError(ws, 'INVALID_GAME_TYPE', 'Only six_king game type is supported');
-    return;
+      const playerData = {
+        id: playerId,
+        name: playerName,
+        ws,
+        stake: parseInt(stake)
+      };
+  
+      const result = GameService.createGame(playerData);
+      
+      console.log(`✅ Game created with ID: ${result.gameId}`);
+      
+      updateWalletBalance(playerId,userWallet - parseInt(stake));
+
+      ws.send(JSON.stringify({
+        type: 'game_created',
+        data: result
+      }));
+    } catch (error) {
+      console.error('Create game error:', error);
+      sendError(ws, 'CREATE_FAILED', error.message);
+    }
   }
 
-  const playerData = {
-    id: playerId,
-    name: playerName,
-    ws,
-    stake: parseInt(stake)
-  };
-
-  try {
-    const result = GameService.createGame(playerData);
-    
-    console.log(`✅ Game created with ID: ${result.gameId}`);
-    
-    ws.send(JSON.stringify({
-      type: 'game_created',
-      data: result
-    }));
-  } catch (error) {
-    console.error('Create game error:', error);
-    sendError(ws, 'CREATE_FAILED', error.message);
-  }
-}
-
-function handleJoinGame(ws, data) {
+  async function handleJoinGame(ws, data) {
     const { gameId, playerId, playerName, stake } = data;
     
     console.log(`🔗 Player ${playerName} trying to join game ${gameId}`);
     
-    const playerData = {
-      id: playerId,
-      name: playerName,
-      ws,
-      stake: parseInt(stake)
-    };
-  
     try {
+      // ✅ Properly await async function
+      const userWallet = await GameService.getUserWallet(playerId);
+      
+      if (userWallet < parseInt(stake)) {
+        sendError(ws, 'INSUFFICIENT_BALANCE', 'Please deposit to continue');
+        return;
+      }
+  
+      const playerData = {
+        id: playerId,
+        name: playerName,
+        ws,
+        stake: parseInt(stake)
+      };
+  
       const result = GameService.joinGame(gameId, playerData);
       
       console.log(`✅ Player ${playerName} joined game ${gameId}`);
+
+      updateWalletBalance(playerId,userWallet - parseInt(stake));
       
       ws.send(JSON.stringify({
         type: 'game_joined',
         data: result
       }));
-  
-      // Remove the ready_to_start broadcast - backend handles auto-start
-      
     } catch (error) {
       console.error('Join game error:', error);
       sendError(ws, 'JOIN_FAILED', error.message);
@@ -138,7 +156,7 @@ function handleStartGame(ws, data) {
   }
 }
 
-function handleJoinQueue(ws, data) {
+async function handleJoinQueue(ws, data) {
     const { playerId, playerName, stake } = data;
     
     console.log(`🔍 Player ${playerName} joining queue`);
@@ -155,25 +173,74 @@ function handleJoinQueue(ws, data) {
       
       if (result.matched) {
         console.log(`🎯 Match found!`);
-        
-        // Send match notification to both players
-        result.waitingPlayer.ws.send(JSON.stringify({
-          type: 'game_matched',
-          data: { 
-            gameId: result.gameId, 
-            opponent: { id: result.newPlayer.id, name: result.newPlayer.name },
-            stake: result.stake
+        console.log(result);
+      
+        try {
+          // ✅ Extract IDs correctly
+          const newPlayerId = result.newPlayer.id;        // 'cedc4052-53b9-4a29-a838-5e15b68dfbcc'
+          const waitingPlayerId = result.waitingPlayer.id; // '09dc8e78-6c1b-48af-ab52-dc282ca14f3a'
+          const stakeAmount = result.stake;                // 100
+      
+          console.log(`💰 Processing stake deduction:`);
+          console.log(`  New Player ID: ${newPlayerId}`);
+          console.log(`  Waiting Player ID: ${waitingPlayerId}`);
+          console.log(`  Stake Amount: ${stakeAmount}`);
+      
+          // ✅ Get current wallet balances
+          const newPlayerBalance = await checkWalletBalance(newPlayerId);
+          const waitingPlayerBalance = await checkWalletBalance(waitingPlayerId);
+      
+          console.log(`💳 Current balances:`);
+          console.log(`  New Player: ₹${newPlayerBalance}`);
+          console.log(`  Waiting Player: ₹${waitingPlayerBalance}`);
+      
+          // ✅ Check sufficient balances
+          if (newPlayerBalance < stakeAmount) {
+            sendError(ws, 'INSUFFICIENT_BALANCE', 'Insufficient balance for stake');
+            return;
           }
-        }));
-  
-        ws.send(JSON.stringify({
-          type: 'game_matched',
-          data: { 
-            gameId: result.gameId, 
-            opponent: { id: result.waitingPlayer.id, name: result.waitingPlayer.name },
-            stake: result.stake
+      
+          if (waitingPlayerBalance < stakeAmount) {
+            sendError(result.waitingPlayer.ws, 'INSUFFICIENT_BALANCE', 'Waiting player has insufficient balance');
+            return;
           }
-        }));
+      
+          // ✅ Calculate new balances
+          const newPlayerNewBalance = newPlayerBalance - stakeAmount;
+          const waitingPlayerNewBalance = waitingPlayerBalance - stakeAmount;
+      
+          // ✅ Update wallets with correct parameters
+          await updateWalletBalance(newPlayerId, newPlayerNewBalance);
+          await updateWalletBalance(waitingPlayerId, waitingPlayerNewBalance);
+      
+          console.log(`✅ Wallet updates completed:`);
+          console.log(`  New Player: ₹${newPlayerBalance} → ₹${newPlayerNewBalance}`);
+          console.log(`  Waiting Player: ₹${waitingPlayerBalance} → ₹${waitingPlayerNewBalance}`);
+      
+          // Send match notifications
+          result.waitingPlayer.ws.send(JSON.stringify({
+            type: 'game_matched',
+            data: { 
+              gameId: result.gameId, 
+              opponent: { id: newPlayerId, name: result.newPlayer.name },
+              stake: result.stake
+            }
+          }));
+      
+          ws.send(JSON.stringify({
+            type: 'game_matched',
+            data: { 
+              gameId: result.gameId, 
+              opponent: { id: waitingPlayerId, name: result.waitingPlayer.name },
+              stake: result.stake
+            }
+          }));
+      
+        } catch (error) {
+          console.error('Error processing match:', error);
+          sendError(ws, 'MATCH_FAILED', 'Failed to process stake deduction');
+          return;
+        }
       } else {
         ws.send(JSON.stringify({
           type: 'queued',
@@ -230,7 +297,7 @@ function handleJoinQueue(ws, data) {
   }
 
 function handleLeaveGame(ws, data) {
-  const { gameId, playerId } = data;
+  const { gameId, playerId, opponentId, stake } = data;
   console.log(`👋 Player ${playerId} leaving game ${gameId}`);
   GameService.leaveGame(gameId, playerId);
 }

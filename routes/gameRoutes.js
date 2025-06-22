@@ -1,3 +1,5 @@
+const { getUserWallet } = require("../services/GameService");
+const { updateWalletBalance } = require("./wallet");
 const games = new Map();
 const players = new Map();
 const waitingQueue = new Map();
@@ -55,6 +57,14 @@ function handleCreateGame(ws, data) {
     return;
   }
 
+  const val = getUserWallet(data)
+  if(val < stake){
+    sendError(ws, 'INSUFFICIENT balance', 'Please deposit to continue');
+    return;
+  }
+
+  updateWalletBalance(playerId, val - stake);
+  
   const gameId = generateGameCode();
   const player = {
     id: playerId,
@@ -77,6 +87,13 @@ function handleJoinGame(ws, data) {
   const { gameId, playerId, playerName, stake } = data;
   
   const game = games.get(gameId);
+
+  const val = getUserWallet(data)
+  if(val < stake){
+    sendError(ws, 'INSUFFICIENT balance', 'Please deposit to continue');
+    return;
+  }
+
   if (!game) {
     sendError(ws, 'GAME_NOT_FOUND', 'Game not found');
     return;
@@ -91,6 +108,8 @@ function handleJoinGame(ws, data) {
     sendError(ws, 'STAKE_MISMATCH', 'Stake amount does not match game stake');
     return;
   }
+  console.log("aa rhaa kya");
+  updateWalletBalance(playerId, val - stake);
 
   const player = {
     id: playerId,

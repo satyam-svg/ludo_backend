@@ -1,3 +1,4 @@
+const { checkWalletBalance } = require('../routes/wallet');
 const { SixKingGame, generateGameCode } = require('../utils/GameManager');
 
 const games = new Map();
@@ -13,6 +14,15 @@ class GameService {
     
     console.log(`📊 Game created: ${gameId}`);
     return { gameId, stake: playerData.stake };
+  }
+
+  static async getUserWallet(playerId) {
+    try {
+      return await checkWalletBalance(playerId);
+    } catch (error) {
+      console.error('Error getting user wallet:', error);
+      return 0; // or throw error
+    }
   }
 
   static joinGame(gameId, playerData) {

@@ -62,7 +62,7 @@ app.get('/api/test', (req, res) => {
 // Your existing routes
 app.use('/api/users', userRoutes);
 app.use('/api/lucky-number', luckyNumberRoutes);
-app.use('/api/wallet', walletRoutes);
+app.use('/api/wallet', walletRoutes.router);
 
 // WebSocket setup
 const http = require('http');
