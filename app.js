@@ -26,7 +26,7 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-// Add response headers for better compatibility
+// Add response headers for better compatibility checking
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
