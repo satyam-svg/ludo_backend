@@ -217,7 +217,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🌐 Test your API:`);
   console.log(`   Local: http://localhost:${PORT}/health`);
   console.log(`   Network: http://192.168.1.19:${PORT}/health`);
-  console.log(`\n📱 For React Native, use: http://192.168.1.19:${PORT}/api/users`);
+  console.log(`\n📱 For React Native, use: http://metor-ip:${PORT}/api/users`);
 });
 
 // Graceful shutdown
