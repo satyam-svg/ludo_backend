@@ -1,9 +1,9 @@
 const cors = require('cors');
 const express = require('express');
 const userRoutes = require('./routes/userRoutes');
-const luckyNumberRoutes = require('./routes/luckyNumber');
 const walletRoutes = require('./routes/wallet');
-
+const luckyNumberRoutes = require('./routes/luckyNumberRoutes');
+const matkaRoutes=require('./routes/matkaRoutes')
 const app = express();
 
 // Enhanced CORS configuration for React Native
@@ -26,7 +26,7 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-// Add response headers for better compatibility
+// Add response headers for better compatibility checking
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -63,6 +63,8 @@ app.get('/api/test', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/lucky-number', luckyNumberRoutes);
 app.use('/api/wallet', walletRoutes.router);
+app.use('/api/matka',matkaRoutes)
+
 
 // WebSocket setup
 const http = require('http');
@@ -171,53 +173,6 @@ const PORT = process.env.PORT || 5000;
 
 // Updated server.listen with better configuration
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📱 HTTP API: http://localhost:${PORT}/api`);
-  console.log(`🌐 External API: http://192.168.1.19:${PORT}/api`);
-  console.log(`🎮 WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-  console.log(`🧪 Test endpoint: http://localhost:${PORT}/api/test`);
-  
-  console.log('\n📚 Available API Routes:');
-  console.log('┌─────────────────────────────────────────────────────────┐');
-  console.log('│                    USER ROUTES                          │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│ POST   /api/users/signup          - Register new user   │');
-  console.log('│ POST   /api/users/login           - User login          │');
-  console.log('│ POST   /api/users/verify-otp      - Verify OTP          │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│                    WALLET ROUTES                        │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│ GET    /api/wallet/balance        - Get wallet balance  │');
-  console.log('│ POST   /api/wallet/check-balance  - Check if has money  │');
-  console.log('│ POST   /api/wallet/deposit        - Deposit money       │');
-  console.log('│ POST   /api/wallet/withdraw       - Request withdrawal  │');
-  console.log('│ GET    /api/wallet/transactions   - Transaction history │');
-  console.log('│ GET    /api/wallet/withdrawals    - Withdrawal history  │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│                 LUCKY NUMBER GAME                       │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│ POST   /api/lucky-number/start    - Start new game      │');
-  console.log('│ POST   /api/lucky-number/roll     - Roll dice           │');
-  console.log('│ POST   /api/lucky-number/finalize - Finalize game       │');
-  console.log('│ GET    /api/lucky-number/status   - Get game status     │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│                 MULTIPLAYER GAMES                       │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│ GET    /api/games/active          - Get active games    │');
-  console.log('│ GET    /api/games/:gameId         - Get game details    │');
-  console.log('│ WS     /ws                        - WebSocket endpoint  │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│                    UTILITIES                            │');
-  console.log('├─────────────────────────────────────────────────────────┤');
-  console.log('│ GET    /health                    - Health check        │');
-  console.log('│ GET    /api/test                  - API test endpoint   │');
-  console.log('└─────────────────────────────────────────────────────────┘');
-  
-  console.log(`\n🌐 Test your API:`);
-  console.log(`   Local: http://localhost:${PORT}/health`);
-  console.log(`   Network: http://192.168.1.19:${PORT}/health`);
-  console.log(`\n📱 For React Native, use: http://192.168.1.19:${PORT}/api/users`);
 });
 
 // Graceful shutdown
