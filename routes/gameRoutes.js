@@ -1,5 +1,5 @@
 const { getUserWallet } = require("../services/GameService");
-const { updateWalletBalance } = require("./wallet");
+const { updateWalletBalance } = require("./walletRoutes");
 const games = new Map();
 const players = new Map();
 const waitingQueue = new Map();
@@ -275,21 +275,4 @@ app.get('/api/games/active', (req, res) => {
     }));
     
     res.json(activeGames);
-  });
-  
-  app.get('/api/games/:gameId', (req, res) => {
-    const game = games.get(req.params.gameId);
-    if (!game) {
-      return res.status(404).json({ error: 'Game not found' });
-    }
-    
-    res.json({
-      gameId: game.gameId,
-      stake: game.stake,
-      players: game.players.map(p => ({ id: p.id, name: p.name })),
-      state: game.state,
-      scores: game.scores,
-      currentTurn: game.currentTurn,
-      rollCount: game.rollCount
-    });
   });

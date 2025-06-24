@@ -1,7 +1,7 @@
 const cors = require('cors');
 const express = require('express');
 const userRoutes = require('./routes/userRoutes');
-const walletRoutes = require('./routes/wallet');
+const walletRoutes = require('./routes/walletRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumberRoutes');
 const matkaRoutes=require('./routes/matkaRoutes')
 const app = express();
