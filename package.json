@@ -12,6 +12,7 @@
   "description": "",
   "dependencies": {
     "@prisma/client": "^6.8.2",
+    "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "cashfree-pg": "^5.0.8",
     "cors": "^2.8.5",

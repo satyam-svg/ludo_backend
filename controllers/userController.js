@@ -1,14 +1,14 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 const otpGenerator = require('otp-generator');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = 'your_secure_jwt_secret';
+const FAST2SMS_API_KEY = 'dont expose use locally api key'; // Replace with your actual API key
 
 const otpStore = {};
-
 
 const generateReferralCode = async () => {
   const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -31,31 +31,52 @@ const generateReferralCode = async () => {
   return code;
 };
 
+// Function to send OTP via Fast2SMS
+const sendOTP = async (phoneNumber, otp) => {
+  try {
+    const response = await axios.post('https://www.fast2sms.com/dev/bulkV2', {
+      route: 'otp',
+      variables_values: otp,
+      schedule_time: '',
+      numbers: phoneNumber
+    }, {
+      headers: {
+        'Authorization': FAST2SMS_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'satyammaurya9620@gmail.com',
-    pass: 'ycli dqri gfje dtwi'
+    return response.data;
+  } catch (error) {
+    console.error('Fast2SMS Error:', error.response?.data || error.message);
+    throw new Error('Failed to send OTP');
   }
-});
+};
 
-
+// Signup controller
 const signup = async (req, res) => {
   try {
-    const { email, password, referralCode } = req.body;
+    const { phoneNumber, password, referralCode } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^[6-9]\d{9}$/;
+    if (!phoneNumber || !phoneRegex.test(phoneNumber)) {
+      return res.status(400).json({ error: 'Valid phone number is required (10 digits starting with 6-9)' });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
+    }
+
+    // Check if phone number already exists
+    const existingUser = await prisma.user.findUnique({ where: { phoneNumber } });
     if (existingUser) {
-      return res.status(400).json({ error: 'Email already registered' });
+      return res.status(400).json({ error: 'Phone number already registered' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate 6-digit OTP
     const otp = otpGenerator.generate(6, {
       upperCaseAlphabets: false,
       specialChars: false,
@@ -63,31 +84,19 @@ const signup = async (req, res) => {
       digits: true
     });
 
-    otpStore[email] = {
+    // Store OTP temporarily
+    otpStore[phoneNumber] = {
       otp,
-      expiresAt: Date.now() + 300000,
+      expiresAt: Date.now() + 300000, // 5 minutes
       password: hashedPassword,
       referralCode
     };
 
-    const mailOptions = {
-      from: '"Ludo Kingdom" <satyammaurya9620@gmail.com>',
-      to: email,
-      subject: 'Your OTP for Ludo Kingdom Signup',
-      html: `
-        <div>
-          <h2>Ludo Kingdom - Account Verification</h2>
-          <p>Your OTP is:</p>
-          <h1>${otp}</h1>
-          <p>Valid for 5 minutes.</p>
-        </div>
-      `
-    };
-
-    await transporter.sendMail(mailOptions);
+    // Send OTP via Fast2SMS
+    await sendOTP(phoneNumber, otp);
 
     return res.status(200).json({
-      message: 'OTP sent successfully.',
+      message: 'OTP sent successfully to your phone number.',
       expiresIn: 300
     });
 
@@ -99,16 +108,16 @@ const signup = async (req, res) => {
 
 // Verify OTP controller
 const verifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
+  const { phoneNumber, otp } = req.body;
 
-  if (!email || !otp) {
-    return res.status(400).json({ error: 'Email and OTP are required' });
+  if (!phoneNumber || !otp) {
+    return res.status(400).json({ error: 'Phone number and OTP are required' });
   }
 
-  const storedData = otpStore[email];
+  const storedData = otpStore[phoneNumber];
 
   if (!storedData || Date.now() > storedData.expiresAt) {
-    delete otpStore[email];
+    delete otpStore[phoneNumber];
     return res.status(400).json({ error: 'OTP expired or not found' });
   }
 
@@ -121,13 +130,14 @@ const verifyOtp = async (req, res) => {
 
     const user = await prisma.user.create({
       data: {
-        email,
+        phoneNumber,
         password: storedData.password,
         wallet: 0,
         referralCode
       }
     });
 
+    // Handle referral bonus if referral code was provided
     if (storedData.referralCode) {
       const referrer = await prisma.user.findFirst({
         where: { referralCode: storedData.referralCode }
@@ -143,6 +153,7 @@ const verifyOtp = async (req, res) => {
 
         const bonusAmount = 10;
 
+        // Update wallet balances
         await prisma.user.update({
           where: { id: referrer.id },
           data: { wallet: { increment: bonusAmount } }
@@ -153,6 +164,7 @@ const verifyOtp = async (req, res) => {
           data: { wallet: { increment: bonusAmount } }
         });
 
+        // Create transaction records
         await prisma.transaction.createMany({
           data: [
             {
@@ -170,8 +182,10 @@ const verifyOtp = async (req, res) => {
       }
     }
 
-    delete otpStore[email];
+    // Clean up OTP store
+    delete otpStore[phoneNumber];
 
+    // Generate JWT token
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
 
     return res.status(201).json({
@@ -188,13 +202,13 @@ const verifyOtp = async (req, res) => {
 // Login controller
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { phoneNumber, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!phoneNumber || !password) {
+      return res.status(400).json({ error: 'Phone number and password are required' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { phoneNumber } });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -217,6 +231,49 @@ const login = async (req, res) => {
   }
 };
 
+// Resend OTP controller (optional but useful)
+const resendOtp = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({ error: 'Phone number is required' });
+    }
+
+    const storedData = otpStore[phoneNumber];
+    if (!storedData) {
+      return res.status(400).json({ error: 'No pending OTP request found' });
+    }
+
+    // Generate new OTP
+    const newOtp = otpGenerator.generate(6, {
+      upperCaseAlphabets: false,
+      specialChars: false,
+      lowerCaseAlphabets: false,
+      digits: true
+    });
+
+    // Update stored data with new OTP and extended expiry
+    otpStore[phoneNumber] = {
+      ...storedData,
+      otp: newOtp,
+      expiresAt: Date.now() + 300000 // 5 minutes
+    };
+
+    // Send new OTP
+    await sendOTP(phoneNumber, newOtp);
+
+    return res.status(200).json({
+      message: 'OTP resent successfully',
+      expiresIn: 300
+    });
+
+  } catch (error) {
+    console.error('Error in resendOtp:', error);
+    return res.status(500).json({ error: 'Failed to resend OTP' });
+  }
+};
+
 // Get user data
 const getUserData = async (req, res) => {
   try {
@@ -235,11 +292,10 @@ const getUserData = async (req, res) => {
       where: { id: decoded.userId },
       select: {
         id: true,
-        email: true,
+        phoneNumber: true,
         wallet: true,
         referralCode: true,
       }
-
     });
     console.log(user);
 
@@ -252,10 +308,10 @@ const getUserData = async (req, res) => {
   }
 };
 
-
 module.exports = {
   signup,
   verifyOtp,
   login,
-  getUserData
+  getUserData,
+  resendOtp
 };

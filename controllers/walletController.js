@@ -40,7 +40,7 @@ class WalletController {
         where: { id: userId },
         select: {
           id: true,
-          email: true,
+          phoneNumber: true,
           wallet: true
         }
       });
@@ -82,7 +82,7 @@ class WalletController {
         wallet: {
           balance: user.wallet,
           userId: user.id,
-          email: user.email
+          phoneNumber: user.phoneNumber
         },
         recentTransactions,
         pendingWithdrawals
@@ -481,7 +481,7 @@ class WalletController {
           user: {
             select: {
               id: true,
-              email: true,
+              phoneNumber: true,
               wallet: true
             }
           }

@@ -126,7 +126,7 @@ router.get('/admin/withdrawals', authenticateAdmin, async (req, res) => {
         user: {
           select: {
             id: true,
-            email: true,
+            phoneNumber: true,
             wallet: true
           }
         }
@@ -175,7 +175,7 @@ router.get('/admin/transactions', authenticateAdmin, async (req, res) => {
         user: {
           select: {
             id: true,
-            email: true
+            phoneNumber: true
           }
         }
       },

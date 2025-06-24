@@ -8,131 +8,116 @@ datasource db {
 }
 
 model User {
-  id           String  @id @default(uuid())
-  email        String  @unique
+  id           String        @id @default(uuid())
+  phoneNumber  String        @unique
   password     String
-  wallet       Float   @default(0)
-  referralCode String? @unique
-  role         String  @default("Customer")
-
-  // Referral relations
-  referrals  Referral[] @relation("Referrer")
-  referredBy Referral?  @relation("Referee")
-
-  // Game and financials
+  wallet       Float         @default(0)
+  referralCode String?       @unique
+  role         String        @default("Customer")
+  gameSessions GameSession[]
   games        Game[]
+  matkaBets    MatkaBet[]
+  referredBy   Referral?     @relation("Referee")
+  referrals    Referral[]    @relation("Referrer")
   transactions Transaction[]
   withdrawals  Withdrawal[]
-
-  // Add game sessions
-  gameSessions GameSession[]
-  matkaBets    MatkaBet[]
 
   @@map("users")
 }
 
 model Referral {
-  id String @id @default(uuid())
-
-  // Referrer
-  referrer   User   @relation("Referrer", fields: [referrerId], references: [id])
+  id         String   @id @default(uuid())
   referrerId String
-
-  // Referee
-  referee   User   @relation("Referee", fields: [refereeId], references: [id])
-  refereeId String @unique
-
-  createdAt DateTime @default(now())
+  refereeId  String   @unique
+  createdAt  DateTime @default(now())
+  referee    User     @relation("Referee", fields: [refereeId], references: [id])
+  referrer   User     @relation("Referrer", fields: [referrerId], references: [id])
 
   @@map("referrals")
 }
 
 model Game {
   id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
   userId    String
   score     Int
   duration  Int
   metadata  Json?
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 
   @@map("games")
 }
 
 model Transaction {
   id          String   @id @default(uuid())
-  user        User     @relation(fields: [userId], references: [id])
   userId      String
   amount      Float
   type        String   @default("deposit")
-  gameId      String? // Add gameId for game transactions
+  gameId      String?
   description String?
   createdAt   DateTime @default(now())
-
-  reference String? @unique
+  reference   String?  @unique
+  user        User     @relation(fields: [userId], references: [id])
 
   @@map("transactions")
 }
 
 model Withdrawal {
   id        String   @id @default(uuid())
-  user      User     @relation(fields: [userId], references: [id])
   userId    String
   amount    Float
   status    String   @default("pending")
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
 
   @@map("withdrawals")
 }
 
-// Add GameSession model
 model GameSession {
   id          String    @id @default(uuid())
   gameId      String    @unique
-  user        User      @relation(fields: [userId], references: [id])
   userId      String
-  gameType    String // 'lucky_number' or '6_king'
+  gameType    String
   stake       Float
-  luckyNumber Int? // For lucky number game
+  luckyNumber Int?
   winAmount   Float?
-  status      String    @default("active") // 'active', 'completed'
-  result      String? // 'win', 'loss'
-  rollHistory String? // Comma-separated dice values
+  status      String    @default("active")
+  result      String?
+  rollHistory String?
   createdAt   DateTime  @default(now())
   completedAt DateTime?
+  user        User      @relation(fields: [userId], references: [id])
 
   @@map("game_sessions")
 }
 
 model MatkaSlot {
   id        String     @id @default(uuid())
-  slotId    String // morning, afternoon, etc.
+  slotId    String
   slotName  String
-  slotDate  DateTime // Date only
-  startTime String // HH:mm format
-  endTime   String // HH:mm format
-  status    String // scheduled, open, closed, completed
-  result    Int? // 0-9
+  slotDate  DateTime
+  startTime String
+  endTime   String
+  status    String
+  result    Int?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   bets      MatkaBet[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
   @@map("matka_slots")
 }
 
 model MatkaBet {
   id             String    @id @default(uuid())
-  user           User      @relation(fields: [userId], references: [id])
   userId         String
-  slot           MatkaSlot @relation(fields: [matkaSlotId], references: [id])
   matkaSlotId    String
-  selectedNumber Int // 0-9
+  selectedNumber Int
   stakeAmount    Float
   winAmount      Float?
-  status         String // pending, won, lost
-
-  createdAt DateTime @default(now())
+  status         String
+  createdAt      DateTime  @default(now())
+  slot           MatkaSlot @relation(fields: [matkaSlotId], references: [id])
+  user           User      @relation(fields: [userId], references: [id])
 
   @@map("matka_bets")
 }
