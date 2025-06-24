@@ -1,4 +1,4 @@
-const { checkWalletBalance, updateWalletBalance } = require("../routes/wallet");
+const { checkWalletBalance, updateWalletBalance } = require("../routes/walletRoutes");
 
 class SixKingGame {
     constructor(gameId, hostPlayer, stake) {

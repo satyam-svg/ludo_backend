@@ -1,4 +1,4 @@
-const { checkWalletBalance } = require('../routes/wallet');
+const { checkWalletBalance } = require('../routes/walletRoutes');
 const { SixKingGame, generateGameCode } = require('../utils/GameManager');
 
 const games = new Map();

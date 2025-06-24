@@ -1,5 +1,5 @@
 const GameService = require('../services/GameService');
-const {updateWalletBalance, checkWalletBalance} = require('../routes/wallet')
+const {updateWalletBalance, checkWalletBalance} = require('../routes/walletRoutes')
 
 function handleMessage(ws, type, data) {
   try {
