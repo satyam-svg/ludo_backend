@@ -13,24 +13,21 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Deploy to EC2
-      uses: appleboy/ssh-action@v0.1.7
+      uses: easingthemes/ssh-deploy@v4.1.8
       with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        port: 22
-        script: |
+        SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+        REMOTE_HOST: ${{ secrets.EC2_HOST }}
+        REMOTE_USER: ${{ secrets.EC2_USERNAME }}
+        SCRIPT_BEFORE: |
           cd ludo_backend
-
-          git pull origin master
-
+          git pull origin main
           npm install
-
           npx prisma generate
           npx prisma db push
-
           pm2 restart backend || pm2 start npm --name "backend" -- start
           pm2 restart prisma-studio || pm2 start "npx prisma studio" --name "prisma-studio"
+          pm2 save
+          echo "✅ Deployment completed successfully!"
 
           pm2 save
 
