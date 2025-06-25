@@ -16,7 +16,7 @@ jobs:
         echo "Checking if secrets are set..."
         echo "Host: ${{ secrets.EC2_HOST }}"
         echo "Username: ${{ secrets.EC2_USERNAME }}"
-        echo "Key length: ${#secrets.EC2_SSH_KEY}"
+        echo "Key length: ${{secrets.EC2_SSH_KEY}}"
         echo "Key starts with: $(echo '${{ secrets.EC2_SSH_KEY }}' | head -c 30)..."
     
     - name: Deploy to EC2
