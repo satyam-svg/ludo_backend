@@ -5,8 +5,8 @@ const otpGenerator = require('otp-generator');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'your_secure_jwt_secret';
-const FAST2SMS_API_KEY = 'dont expose use locally api key'; // Replace with your actual API key
+const JWT_SECRET = process.env.JWT_SECRET;
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY; // Replace with your actual API key
 
 const otpStore = {};
 
