@@ -26,13 +26,23 @@ jobs:
     - name: Deploy to EC2
       run: |
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-          cd /home/ubuntu/ludo_backend
+          cd ludo_backend
           git pull origin master
           npm install
           npx prisma generate
           npx prisma db push
-          pm2 restart backend || pm2 start npm --name "backend" -- start
-          pm2 restart prisma-studio || pm2 start "npx prisma studio" --name "prisma-studio"
+          # Smart restart - only restart if exists, otherwise start new
+          if pm2 list | grep -q "backend"; then
+            pm2 restart backend
+          else
+            pm2 start npm --name "backend" -- start
+          fi
+          
+          if pm2 list | grep -q "prisma-studio"; then
+            pm2 restart prisma-studio
+          else
+            pm2 start "npx prisma studio" --name "prisma-studio"
+          fi
           pm2 save
           echo "✅ Deployment completed successfully!"
         EOF
