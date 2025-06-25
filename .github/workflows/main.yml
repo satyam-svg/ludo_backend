@@ -1,0 +1,48 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Setup SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Test SSH Connection
+      run: |
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} "echo 'SSH connection successful'"
+    
+    - name: Deploy to EC2
+      run: |
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          cd ludo_backend
+          git pull origin master
+          npm install
+          npx prisma generate
+          npx prisma db push
+          # Smart restart - only restart if exists, otherwise start new
+          if pm2 list | grep -q "backend"; then
+            pm2 restart backend
+          else
+            pm2 start npm --name "backend" -- start
+          fi
+          
+          if pm2 list | grep -q "prisma-studio"; then
+            pm2 restart prisma-studio
+          else
+            pm2 start "npx prisma studio" --name "prisma-studio"
+          fi
+          pm2 save
+          echo "✅ Deployment completed successfully!"
+        EOF
