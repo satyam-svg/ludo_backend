@@ -2,23 +2,16 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ master]  # Change to 'master' if your default branch is master
+    branches: [master]  # Remove space if not intended
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-    - name: Debug SSH Key
-      run: |
-        echo "Checking if secrets are set..."
-        echo "Host: ${{ secrets.EC2_HOST }}"
-        echo "Username: ${{ secrets.EC2_USERNAME }}"
-        echo "Key length: ${{secrets.EC2_SSH_KEY}}"
-        echo "Key starts with: $(echo '${{ secrets.EC2_SSH_KEY }}' | head -c 30)..."
-    
+
     - name: Deploy to EC2
       uses: appleboy/ssh-action@v0.1.7
       with:
@@ -27,26 +20,18 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         port: 22
         script: |
-          # Navigate to your project directory
           cd ludo_backend
-          
-          # Pull latest changes
+
           git pull origin master
-          
-          # Install dependencies
+
           npm install
-          
-          # Generate Prisma client
+
           npx prisma generate
-          
-          # Push database changes (be careful with this in production)
           npx prisma db push
-          
-          # Restart PM2 processes
+
           pm2 restart backend || pm2 start npm --name "backend" -- start
           pm2 restart prisma-studio || pm2 start "npx prisma studio" --name "prisma-studio"
-          
-          # Save PM2 configuration
+
           pm2 save
-          
-          echo "Deployment completed successfully!"
+
+          echo "✅ Deployment completed successfully!"
