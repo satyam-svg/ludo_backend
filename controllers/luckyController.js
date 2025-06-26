@@ -302,7 +302,7 @@ exports.leaveGame = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error leaving game:', error);
+    console.error('Error in leaving game:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
