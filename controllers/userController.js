@@ -285,6 +285,7 @@ const getUserData = async (req, res) => {
     const token = authHeader.split(' ')[1];
     console.log("Incoming token:", token);
 
+    console.log(JWT_SECRET);
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log("Decoded user:", decoded);
 

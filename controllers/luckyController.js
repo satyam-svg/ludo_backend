@@ -236,3 +236,73 @@ exports.getGameStatus = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+exports.leaveGame = async (req, res) => {
+  try {
+    const { gameId } = req.body;
+    const userId = req.user.id;
+
+    if (!gameId) return res.status(400).json({ error: 'Game ID required' });
+
+    const gameSession = gameSessions.get(gameId);
+    if (!gameSession) return res.status(404).json({ error: 'Game session not found' });
+    if (gameSession.userId !== userId) return res.status(403).json({ error: 'Unauthorized access' });
+    if (gameSession.gameState !== 'active') return res.status(400).json({ error: 'Game is not active or already completed' });
+    if (gameSession.finalized) return res.status(400).json({ error: 'Game already finalized' });
+
+    // Mark game as left and process wallet deduction
+    const result = await prisma.$transaction(async (prisma) => {
+      const user = await prisma.user.findUnique({ where: { id: userId }});
+      if (!user) throw new Error('User not found');
+
+      // Deduct stake amount from wallet
+      const newBalance = user.wallet - gameSession.stake;
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { wallet: newBalance }
+      });
+
+      // Create transaction record for leaving game
+      await prisma.transaction.create({
+        data: {
+          userId,
+          amount: -gameSession.stake,
+          type: 'game_left',
+          gameId,
+          description: `Lucky Number Game: Left - Number: ${gameSession.luckyNumber}, Stake: ₹${gameSession.stake}`
+        }
+      });
+
+      // Update game session in database
+      await prisma.gameSession.update({
+        where: { gameId },
+        data: {
+          status: 'left',
+          result: 'left',
+          completedAt: new Date()
+        }
+      });
+
+      return { newBalance };
+    });
+
+    // Update in-memory session
+    gameSession.gameState = 'left';
+    gameSession.finalized = true;
+    gameSession.finalBalance = result.newBalance;
+    gameSessions.set(gameId, gameSession);
+
+    res.json({
+      success: true,
+      message: 'Game left successfully',
+      newBalance: result.newBalance,
+      deductedAmount: gameSession.stake,
+      gameId
+    });
+
+  } catch (error) {
+    console.error('Error leaving game:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
