@@ -9,6 +9,7 @@ const {
   leaveGame
 } = require('../controllers/luckyController');
 
+//routes for lucky number
 router.post('/start', authenticateToken, startGame);
 router.post('/roll', authenticateToken, rollDice);
 router.post('/finalize', authenticateToken, finalizeGame);
