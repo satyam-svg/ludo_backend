@@ -3,21 +3,21 @@ const router = express.Router();
 const {
   getSlots,
   placeBet,
-  getUserBets,
-  getSlotDetails
-} = require('../controllers/matkaContoller');
+  getUserSessions,
+  getGameSession
+} = require('../controllers/matkaController');
 const { authenticateToken } = require('../middleware/authMiddleware');
 
-
+// Get all available slots with user's bets
 router.get('/slots', authenticateToken, getSlots);
 
+// Place a bet in a slot
+router.post('/place-bet', authenticateToken, placeBet);
 
-router.post('/bet', authenticateToken, placeBet);
+// Get user's game sessions
+router.get('/sessions', authenticateToken, getUserSessions);
 
-// Get user's bets (with optional date filter)
-router.get('/bets', authenticateToken, getUserBets);
-
-// Get details of a specific slot including user's bet (if any)
-router.get('/slots/:slotId', authenticateToken, getSlotDetails);
+// Get specific game session
+router.get('/session/:gameId', authenticateToken, getGameSession);
 
 module.exports = router;

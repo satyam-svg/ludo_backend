@@ -46,8 +46,8 @@ app.get('/health', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/wallet', walletRoutes.router);
 app.use('/api/lucky-number', luckyNumberRoutes);
-app.use('/api/matka', matkaRoutes);
 app.use('/api/snake-game', snakeRoutes);
+app.use('/api/matka-king', matkaRoutes);
 
 // Game API Routes
 app.get('/api/games/active', (req, res) => {
