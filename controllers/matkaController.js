@@ -139,7 +139,7 @@ const processSlotResults = async (slotId, winningNumber) => {
     // Process each bet
     for (const bet of bets) {
       const won = bet.selectedNumber === winningNumber;
-      const winAmount = won ? bet.stakeAmount * 9.5 : 0;
+      const winAmount = won ? bet.stakeAmount * 10 : 0;
       const transactionAmount = won ? winAmount : 0;
       
       await prisma.$transaction(async (prisma) => {
@@ -230,7 +230,7 @@ exports.getSlots = async (req, res) => {
         status: slot.status,
         participants: slot._count.bets,
         winningNumber: slot.result,
-        payout: 9.5,
+        payout: 10,
         startTime: startTimeDecimal,
         endTime: endTimeDecimal,
         userBet: userBet ? {

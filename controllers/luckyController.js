@@ -9,13 +9,13 @@ const createBiasedDice = (luckyNumber) => {
   const baseDice = [1, 2, 3, 4, 5, 6];
   const biasedDice = [...baseDice];
   
-  if (luckyNumber === 1) {
-    biasedDice.push(2, 2);
-  } else if (luckyNumber === 6) {
-    biasedDice.push(5, 5);
-  } else {
-    biasedDice.push(luckyNumber - 1, luckyNumber + 1);
-  }
+  // if (luckyNumber === 1) {
+  //   biasedDice.push(2, 2);
+  // } else if (luckyNumber === 6) {
+  //   biasedDice.push(5, 5);
+  // } else {
+  //   biasedDice.push(luckyNumber - 1, luckyNumber + 1);
+  // }
   
   return biasedDice;
 };
