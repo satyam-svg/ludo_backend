@@ -10,7 +10,7 @@ const SNAKES = {
   // First 30 cells (1-30) - 7 snakes
   16: 1, 23: 1, 27: 1, 11: 1, 25: 1, 19: 1, 30: 1,
   // Second 30 cells (31-60) - 7 snakes
-  47: 1, 49: 1, 56: 1, 54: 1, 58: 1, 60: 1, 52: 1,
+  34: 1, 46: 1, 49: 1, 56: 1, 54: 1, 58: 1, 60: 1, 52: 1,
   // Last 40 cells (61-100) - 8 snakes
   87: 1, 93: 1, 95: 1, 98: 1, 89: 1, 91: 1, 84: 1, 96: 1, 7: 1
 };
@@ -19,17 +19,17 @@ const LADDERS = {
   // Lower section (1-25) - 3 ladders
   4: 17, 18: 38, 15: 26,
   // Mid-lower section (26-50) - 3 ladders
-  28: 44, 32: 51, 42: 63,
+  28: 44, 32: 51, 33: 88, 35:55, 42: 63,
   // Mid-upper section (51-75) - 3 ladders
-  57: 76, 62: 81, 71: 90, 37: 45, 66: 74, 64: 77, 78: 82
+  57: 76,59: 99, 62: 81, 71: 90, 37: 45, 66: 85, 64: 77, 67:86, 78: 82
 };
 
 // Game modes configuration
 const GAME_MODES = {
   'Easy Survivor': { rolls: 5, multiplier: 2 },
-  'Daredevil': { rolls: 8, multiplier: 3 },
-  'Snake Master': { rolls: 12, multiplier: 6 },
-  'Legendary': { rolls: 15, multiplier: 10 }
+  'Daredevil': { rolls: 8, multiplier: 4 },
+  'Snake Master': { rolls: 12, multiplier: 8 },
+  'Legendary': { rolls: 15, multiplier: 16 }
 };
 
 const secureRandom = (min = 1, max = 6) => {
@@ -121,13 +121,8 @@ exports.startGame = async (req, res) => {
         userId,
         gameType: 'snake_game',
         stake: stakeAmount,
-        // Store mode info in a JSON field or description if available
-        // mode: mode.name, // Remove this line
-        // maxRolls: gameMode.rolls, // Remove this line
         winAmount,
         status: 'active',
-        // If you have additional fields, store mode info there:
-        // description: `${mode.name} - ${gameMode.rolls} rolls, ${gameMode.multiplier}x multiplier`
       }
     });
 
