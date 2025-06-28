@@ -1,4 +1,6 @@
 const { checkWalletBalance, updateWalletBalance } = require('./routes/walletRoutes');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 // In-memory storage
 const games = new Map();
@@ -6,7 +8,7 @@ const players = new Map();
 const waitingQueue = new Map();
 const adminCache = new Map(); // playerId → isAdmin
 
-// Simple SixKing Game Class
+// Modified SixKingGame class with database integration
 class SixKingGame {
   constructor(gameId, hostPlayer, stake) {
     this.gameId = gameId;
@@ -19,7 +21,56 @@ class SixKingGame {
     this.createdAt = new Date();
     this.scores[hostPlayer.id] = 0;
     
+    // Store initial game session in database
+    this.createGameSession(hostPlayer);
+    
     console.log(`🎮 New game created: ${gameId} with stake ₹${stake}`);
+  }
+
+  // Create game session in database
+  async createGameSession(hostPlayer) {
+    try {
+      // Create unique gameId for each player session
+      const playerGameId = `${this.gameId}_${hostPlayer.id}`;
+      
+      await prisma.gameSession.create({
+        data: {
+          gameId: playerGameId, // Unique per player
+          userId: hostPlayer.id,
+          gameType: 'six_king',
+          stake: this.stake,
+          winAmount: this.stake * 2,
+          status: 'active'
+        }
+      });
+      
+      console.log(`💾 Game session created in DB: ${playerGameId}`);
+    } catch (error) {
+      console.error('Error creating game session:', error);
+    }
+  }
+
+  // Update game session when second player joins
+  async updateGameSessionWithSecondPlayer(secondPlayer) {
+    try {
+      // Create unique gameId for second player
+      const playerGameId = `${this.gameId}_${secondPlayer.id}`;
+      
+      await prisma.gameSession.create({
+        data: {
+          gameId: playerGameId, // Unique per player
+          userId: secondPlayer.id,
+          gameType: 'six_king',
+          stake: this.stake,
+          winAmount: this.stake * 2,
+          status: 'active'
+        }
+      });
+      
+      console.log(`💾 Second player session created in DB: ${playerGameId}`);
+    } catch (error) {
+      console.error('Error creating second player session:', error);
+    }
   }
 
   addPlayer(player) {
@@ -37,8 +88,9 @@ class SixKingGame {
     this.scores[player.id] = 0;
     console.log(`✅ Player added: ${player.name} (${this.players.length}/2)`);
 
-    // Auto-start when 2 players join
+    // Update database with second player
     if (this.players.length === 2) {
+      this.updateGameSessionWithSecondPlayer(player);
       setTimeout(() => this.startGame(), 100);
     }
   }
@@ -74,13 +126,12 @@ class SixKingGame {
       throw new Error('Not your turn');
     }
 
-    const diceValue = Math.floor(Math.random() * 6) + 1;
+    let diceValue = Math.floor(Math.random() * 6) + 1;
 
     if(GameManager.isAdmin(playerId)){
         diceValue = 6;
     }
 
-    // const diceValue = 6; // For testing
     this.rollCount++;
 
     console.log(`🎲 ${playerId} rolled ${diceValue}`);
@@ -122,14 +173,73 @@ class SixKingGame {
       stake: this.stake
     });
 
-    // Update winner's wallet
+    // Update database and winner's wallet
     try {
       const currentBalance = await checkWalletBalance(winnerId);
       const newBalance = currentBalance + (this.stake * 2);
-      await updateWalletBalance(winnerId, newBalance);
+      
+      // Find the loser
+      const loserId = this.players.find(p => p.id !== winnerId).id;
+      
+      // Update database in transaction
+      await prisma.$transaction(async (prisma) => {
+        // Update winner's wallet
+        await updateWalletBalance(winnerId, newBalance);
+        
+        // Update winner's game session
+        await prisma.gameSession.updateMany({
+          where: { 
+            gameId: `${this.gameId}_${winnerId}`, 
+            userId: winnerId 
+          },
+          data: {
+            status: 'completed',
+            result: 'win',
+            rollHistory: this.rollCount.toString(),
+            completedAt: new Date()
+          }
+        });
+        
+        // Update loser's game session
+        await prisma.gameSession.updateMany({
+          where: { 
+            gameId: `${this.gameId}_${loserId}`, 
+            userId: loserId 
+          },
+          data: {
+            status: 'completed',
+            result: 'loss',
+            rollHistory: this.rollCount.toString(),
+            completedAt: new Date()
+          }
+        });
+        
+        // Create transaction records
+        await prisma.transaction.create({
+          data: {
+            userId: winnerId,
+            amount: this.stake * 2,
+            type: 'game_win',
+            gameId: `${this.gameId}_${winnerId}`, // Use unique gameId
+            description: `Six King Game: Won - ${this.scores[winnerId]} sixes, ${this.rollCount} total rolls`
+          }
+        });
+        
+        await prisma.transaction.create({
+          data: {
+            userId: loserId,
+            amount: -this.stake,
+            type: 'game_loss',
+            gameId: `${this.gameId}_${loserId}`, // Use unique gameId
+            description: `Six King Game: Lost - ${this.scores[loserId]} sixes, ${this.rollCount} total rolls`
+          }
+        });
+      });
+      
       console.log(`💰 Winner ${winnerId} received ₹${this.stake * 2}`);
+      console.log(`💾 Game results saved to database`);
     } catch (error) {
-      console.error('Error updating winner wallet:', error);
+      console.error('Error updating winner wallet and database:', error);
     }
 
     // Cleanup after 5 seconds
@@ -140,6 +250,103 @@ class SixKingGame {
     }, 5000);
   }
 
+  // Handle player leaving game
+  async handlePlayerLeave(playerId) {
+    try {
+      // Find the remaining player (if any)
+      const remainingPlayer = this.players.find(p => p.id !== playerId);
+      
+      if (this.state === 'playing' && remainingPlayer) {
+        // Game was in progress - remaining player wins
+        const currentBalance = await checkWalletBalance(remainingPlayer.id);
+        const newBalance = currentBalance + (this.stake * 2);
+        
+        await prisma.$transaction(async (prisma) => {
+          // Update winner's wallet
+          await updateWalletBalance(remainingPlayer.id, newBalance);
+          
+          // Update winner's game session
+          await prisma.gameSession.updateMany({
+            where: { 
+              gameId: `${this.gameId}_${remainingPlayer.id}`, 
+              userId: remainingPlayer.id 
+            },
+            data: {
+              status: 'completed',
+              result: 'win',
+              rollHistory: this.rollCount.toString(),
+              completedAt: new Date()
+            }
+          });
+          
+          // Update leaver's game session
+          await prisma.gameSession.updateMany({
+            where: { 
+              gameId: `${this.gameId}_${playerId}`, 
+              userId: playerId 
+            },
+            data: {
+              status: 'left',
+              result: 'left',
+              rollHistory: this.rollCount.toString(),
+              completedAt: new Date()
+            }
+          });
+          
+          // Create transaction records
+          await prisma.transaction.create({
+            data: {
+              userId: remainingPlayer.id,
+              amount: this.stake * 2,
+              type: 'game_win',
+              gameId: `${this.gameId}_${remainingPlayer.id}`, // Use unique gameId
+              description: `Six King Game: Won by opponent leaving - ${this.rollCount} total rolls`
+            }
+          });
+          
+          await prisma.transaction.create({
+            data: {
+              userId: playerId,
+              amount: -this.stake,
+              type: 'game_left',
+              gameId: `${this.gameId}_${playerId}`, // Use unique gameId
+              description: `Six King Game: Left game - ${this.rollCount} total rolls`
+            }
+          });
+        });
+        
+        console.log(`💰 Remaining player ${remainingPlayer.id} received ₹${this.stake * 2} due to opponent leaving`);
+      } else {
+        // Game was in lobby - just mark as left
+        await prisma.gameSession.updateMany({
+          where: { 
+            gameId: `${this.gameId}_${playerId}`, 
+            userId: playerId 
+          },
+          data: {
+            status: 'left',
+            result: 'left',
+            completedAt: new Date()
+          }
+        });
+        
+        await prisma.transaction.create({
+          data: {
+            userId: playerId,
+            amount: -this.stake,
+            type: 'game_left',
+            gameId: `${this.gameId}_${playerId}`, // Use unique gameId
+            description: `Six King Game: Left lobby`
+          }
+        });
+      }
+      
+      console.log(`💾 Player leave processed in database`);
+    } catch (error) {
+      console.error('Error handling player leave in database:', error);
+    }
+  }
+
   removePlayer(playerId) {
     const playerIndex = this.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) return;
@@ -148,6 +355,9 @@ class SixKingGame {
     this.players.splice(playerIndex, 1);
     
     console.log(`👋 Player ${removedPlayer.name} left game ${this.gameId}`);
+    
+    // Handle database updates for player leaving
+    this.handlePlayerLeave(playerId);
     
     if (this.state === 'playing' && this.players.length === 1) {
       const remainingPlayer = this.players[0];
@@ -203,7 +413,6 @@ const GameManager = {
     admins.forEach(admin => adminCache.set(admin.id, true));
     console.log(`🔑 Loaded ${admins.length} admins into cache`);
   },
-
   isAdmin(playerId) {
     return adminCache.has(playerId);
   },
