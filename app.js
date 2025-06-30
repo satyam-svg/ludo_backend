@@ -9,7 +9,7 @@ const walletRoutes = require('./routes/walletRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumberRoutes');
 const matkaRoutes = require('./routes/matkaRoutes');
 const snakeRoutes = require('./routes/snakeRoutes');
-
+const paymentRoutes=require('./routes/paymentRoutes')
 
 // Import WebSocket handler and Game Manager
 const { handleWebSocketMessage, handleDisconnection } = require('./webSocketHandler');
@@ -48,6 +48,7 @@ app.use('/api/wallet', walletRoutes.router);
 app.use('/api/lucky-number', luckyNumberRoutes);
 app.use('/api/snake-game', snakeRoutes);
 app.use('/api/matka-king', matkaRoutes);
+app.use('/api/payment',paymentRoutes)
 
 // Game API Routes
 app.get('/api/games/active', (req, res) => {
