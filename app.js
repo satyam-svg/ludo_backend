@@ -17,11 +17,11 @@ const app = express();
 
 // CORS and middleware setup
 app.use(cors({
-  origin: '*',
+  origin: '*', // ✅ open to all
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true
 }));
+
 
 app.use(express.json());
 
