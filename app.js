@@ -8,6 +8,8 @@ const userRoutes = require('./routes/userRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumberRoutes');
 const matkaRoutes = require('./routes/matkaRoutes');
+const snakeRoutes = require('./routes/snakeRoutes');
+
 
 // Import WebSocket handler and Game Manager
 const { handleWebSocketMessage, handleDisconnection } = require('./webSocketHandler');
@@ -44,7 +46,8 @@ app.get('/health', (req, res) => {
 app.use('/api/users', userRoutes);
 app.use('/api/wallet', walletRoutes.router);
 app.use('/api/lucky-number', luckyNumberRoutes);
-app.use('/api/matka', matkaRoutes);
+app.use('/api/snake-game', snakeRoutes);
+app.use('/api/matka-king', matkaRoutes);
 
 // Game API Routes
 app.get('/api/games/active', (req, res) => {

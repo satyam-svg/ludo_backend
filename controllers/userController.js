@@ -5,8 +5,8 @@ const otpGenerator = require('otp-generator');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'your_secure_jwt_secret';
-const FAST2SMS_API_KEY = 'dont expose use locally api key'; // Replace with your actual API key
+const JWT_SECRET = process.env.JWT_SECRET;
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY; // Replace with your actual API key
 
 const otpStore = {};
 
@@ -283,10 +283,8 @@ const getUserData = async (req, res) => {
     }
 
     const token = authHeader.split(' ')[1];
-    console.log("Incoming token:", token);
-
     const decoded = jwt.verify(token, JWT_SECRET);
-    console.log("Decoded user:", decoded);
+    // console.log("Decoded user:", decoded);
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -297,7 +295,7 @@ const getUserData = async (req, res) => {
         referralCode: true,
       }
     });
-    console.log(user);
+    // console.log(user);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
@@ -308,10 +306,250 @@ const getUserData = async (req, res) => {
   }
 };
 
+// Get user data
+// Controller to fetch data from two unrelated tables and combine them
+exports.getGameHistory = async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    // Query 1: Fetch from gameSession table
+    const gameSessions = await prisma.gameSession.findMany({
+      where: { 
+        userId: userId,
+        status: 'completed' // Only completed games
+      },
+      select: {
+        id: true,
+        gameId: true,
+        userId: true,
+        gameType: true,
+        stake: true,
+        winAmount: true,
+        result: true,
+        completedAt: true,
+        createdAt: true,
+        luckyNumber: true,
+        rollHistory: true,
+      },
+      orderBy: {
+        completedAt: 'desc'
+      }
+    });
+
+    // Query 2: Fetch from matkaBet table  
+    const matkaBets = await prisma.matkaBet.findMany({
+      where: { userId: userId },
+      select: {
+        id: true,
+        userId: true,
+        stakeAmount: true,
+        winAmount: true,
+        status: true,
+        selectedNumber: true,
+        createdAt: true,
+        matkaSlotId: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    // Optional: If you want slot details for matka bets
+    const matkaSlotIds = matkaBets.map(bet => bet.matkaSlotId).filter(Boolean);
+    let slotDetails = {};
+    
+    if (matkaSlotIds.length > 0) {
+      const slots = await prisma.matkaSlot.findMany({
+        where: { id: { in: matkaSlotIds } },
+        select: {
+          id: true,
+          slotName: true,
+          result: true,
+          slotDate: true
+        }
+      });
+      
+      // Create lookup object for slot details
+      slotDetails = slots.reduce((acc, slot) => {
+        acc[slot.id] = slot;
+        return acc;
+      }, {});
+    }
+
+    // Transform gameSession data to unified format
+    const transformedGameSessions = gameSessions.map(game => ({
+      id: game.id,
+      gameId: game.gameId,
+      type: 'game_session',
+      gameType: game.gameType,
+      stake: game.stake,
+      winAmount: game.winAmount || 0,
+      result: game.result, // 'win' or 'loss'
+      won: game.result === 'win',
+      date: game.completedAt || game.createdAt,
+      luckyNumber: game.luckyNumber,
+      rollHistory: game.rollHistory,
+      // Add any other game-specific fields
+      opponent: null, // Add if you have opponent data
+    }));
+
+    // Transform matkaBet data to unified format
+    const transformedMatkaBets = matkaBets.map(bet => ({
+      id: bet.id,
+      gameId: `matka_${bet.id}`,
+      type: 'matka_bet',
+      gameType: 'matka',
+      stake: bet.stakeAmount,
+      winAmount: bet.winAmount || 0,
+      result: bet.status === 'won' ? 'win' : 'loss',
+      won: bet.status === 'won',
+      date: bet.createdAt,
+      selectedNumber: bet.selectedNumber,
+      // Add slot information if available
+      slotInfo: slotDetails[bet.matkaSlotId] || null,
+    }));
+
+    // Combine both arrays
+    const allGames = [...transformedGameSessions, ...transformedMatkaBets];
+
+    // Sort combined results by date (newest first)
+    allGames.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Calculate summary statistics
+    const totalGames = allGames.length;
+    const gamesWon = allGames.filter(game => game.won).length;
+    const gamesLost = totalGames - gamesWon;
+    const totalWinnings = allGames.reduce((sum, game) => {
+      return sum + (game.won ? game.winAmount : -game.stake);
+    }, 0);
+
+    // Send unified response
+    res.json({
+      success: true,
+      games: allGames,
+      summary: {
+        totalGames,
+        gamesWon,
+        gamesLost,
+        totalWinnings,
+        winRate: totalGames > 0 ? ((gamesWon / totalGames) * 100).toFixed(1) : 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching game history:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
+  }
+};
+
+// Raw SQL approach (if you prefer SQL)
+const gamesHistory = async (req, res) => {
+   try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    // Safer approach: Use separate Prisma queries
+    const [gameSessions, matkaBets] = await Promise.all([
+      prisma.gameSession.findMany({
+        where: { userId: userId },
+        select: {
+          id: true,
+          gameType: true,
+          stake: true,
+          winAmount: true,
+          result: true,
+          createdAt: true,
+          gameId: true,
+          luckyNumber: true,
+          rollHistory: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20 // Limit to 20 records
+      }),
+      
+      prisma.matkaBet.findMany({
+        where: { userId: userId },
+        select: {
+          id: true,
+          stakeAmount: true,
+          winAmount: true,
+          status: true,
+          createdAt: true,
+          selectedNumber: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20 // Limit to 20 records
+      })
+    ]);
+
+    // Transform and combine
+    const allGames = [
+      ...gameSessions.map(game => ({
+        id: game.id,
+        sourceTable: 'gameSession',
+        gameType: game.gameType,
+        stake: game.stake,
+        winAmount: game.winAmount || 0,
+        result: game.result,
+        won: game.result === 'win',
+        date: game.createdAt,
+        gameId: game.gameId,
+        luckyNumber: game.luckyNumber,
+        rollHistory: game.rollHistory
+      })),
+      ...matkaBets.map(bet => ({
+        id: bet.id,
+        sourceTable: 'matkaBet',
+        gameType: 'matka',
+        stake: bet.stakeAmount,
+        winAmount: bet.winAmount || 0,
+        result: bet.status,
+        won: bet.status === 'won',
+        date: bet.createdAt,
+        selectedNumber: bet.selectedNumber
+      }))
+    ];
+
+    // Sort combined results by date and take only 20 most recent
+    allGames.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const recentGames = allGames.slice(0, 20);
+
+    res.json({
+      success: true,
+      games: recentGames,
+      total: recentGames.length
+    });
+
+  } catch (error) {
+    console.error('Error fetching game history:', error);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message 
+    });
+  }
+};
+
 module.exports = {
   signup,
   verifyOtp,
   login,
   getUserData,
-  resendOtp
+  resendOtp,
+  gamesHistory
 };
