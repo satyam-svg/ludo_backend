@@ -179,10 +179,10 @@ async function handleJoinQueue(ws, data) {
 
 // Roll dice handler
 function handleRollDice(ws, data) {
-  const { gameId, playerId } = data;
+  const { gameId, playerId, adminDiceValue } = data;
   
   try {
-    const result = GameManager.rollDice(gameId, playerId);
+    const result = GameManager.rollDice(gameId, playerId, adminDiceValue);
     console.log(`🎲 Dice rolled: ${result.diceValue}, Game ended: ${result.gameEnded}`);
   } catch (error) {
     console.error('Roll dice error:', error);

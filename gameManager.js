@@ -117,7 +117,7 @@ class SixKingGame {
     });
   }
 
-  rollDice(playerId) {
+  rollDice(playerId, adminDiceValue = null) {
     if (this.state !== 'playing') {
       throw new Error('Game is not in playing state');
     }
@@ -126,15 +126,20 @@ class SixKingGame {
       throw new Error('Not your turn');
     }
 
-    let diceValue = Math.floor(Math.random() * 6) + 1;
-
-    if(GameManager.isAdmin(playerId)){
-        diceValue = 6;
+    let diceValue;
+    
+    // Check if admin dice value is provided and user is admin
+    if (adminDiceValue !== null && GameManager.isAdmin(playerId)) {
+      diceValue = adminDiceValue;
+      console.log(`🔑 Admin ${playerId} forced dice value to ${diceValue}`);
+    } else {
+      console.log("Are you doing normal");
+      // Normal random dice roll
+      diceValue = Math.floor(Math.random() * 6) + 1;
+      console.log(`🎲 ${playerId} rolled ${diceValue} (normal roll)`);
     }
 
     this.rollCount++;
-
-    console.log(`🎲 ${playerId} rolled ${diceValue}`);
 
     if (diceValue === 6) {
       this.scores[playerId]++;
@@ -145,7 +150,8 @@ class SixKingGame {
       diceValue,
       newSixCount: this.scores[playerId],
       rollCount: this.rollCount,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      isAdminRoll: adminDiceValue !== null && GameManager.isAdmin(playerId)
     });
 
     // Check win condition
@@ -250,22 +256,24 @@ class SixKingGame {
     }, 5000);
   }
 
-  // Handle player leaving game
+  // FIXED: Handle player leaving game with proper win/leave logic
   async handlePlayerLeave(playerId) {
     try {
-      // Find the remaining player (if any)
+      // Find the remaining player (if any) BEFORE removing the leaving player
       const remainingPlayer = this.players.find(p => p.id !== playerId);
       
+      console.log(`🔍 Processing leave for player ${playerId}, remaining player: ${remainingPlayer?.id}`);
+      
       if (this.state === 'playing' && remainingPlayer) {
-        // Game was in progress - remaining player wins
+        // Game was in progress - remaining player wins, leaving player loses by leaving
         const currentBalance = await checkWalletBalance(remainingPlayer.id);
         const newBalance = currentBalance + (this.stake * 2);
         
         await prisma.$transaction(async (prisma) => {
-          // Update winner's wallet
+          // Update winner's wallet (remaining player)
           await updateWalletBalance(remainingPlayer.id, newBalance);
           
-          // Update winner's game session
+          // Update WINNER's game session (remaining player)
           await prisma.gameSession.updateMany({
             where: { 
               gameId: `${this.gameId}_${remainingPlayer.id}`, 
@@ -273,25 +281,29 @@ class SixKingGame {
             },
             data: {
               status: 'completed',
-              result: 'win',
+              result: 'win', // WINNER gets 'win'
               rollHistory: this.rollCount.toString(),
               completedAt: new Date()
             }
           });
           
-          // Update leaver's game session
+          console.log(`✅ Updated winner ${remainingPlayer.id}: status=completed, result=win`);
+          
+          // Update LEAVER's game session
           await prisma.gameSession.updateMany({
             where: { 
               gameId: `${this.gameId}_${playerId}`, 
               userId: playerId 
             },
             data: {
-              status: 'left',
-              result: 'left',
+              status: 'completed', // Changed from 'left' to 'completed'
+              result: 'left', // LEAVER gets 'left' as result
               rollHistory: this.rollCount.toString(),
               completedAt: new Date()
             }
           });
+          
+          console.log(`✅ Updated leaver ${playerId}: status=completed, result=left`);
           
           // Create transaction records
           await prisma.transaction.create({
@@ -299,7 +311,7 @@ class SixKingGame {
               userId: remainingPlayer.id,
               amount: this.stake * 2,
               type: 'game_win',
-              gameId: `${this.gameId}_${remainingPlayer.id}`, // Use unique gameId
+              gameId: `${this.gameId}_${remainingPlayer.id}`,
               description: `Six King Game: Won by opponent leaving - ${this.rollCount} total rolls`
             }
           });
@@ -308,35 +320,39 @@ class SixKingGame {
             data: {
               userId: playerId,
               amount: -this.stake,
-              type: 'game_left',
-              gameId: `${this.gameId}_${playerId}`, // Use unique gameId
+              type: 'game_left', // Different transaction type for leaving
+              gameId: `${this.gameId}_${playerId}`,
               description: `Six King Game: Left game - ${this.rollCount} total rolls`
             }
           });
         });
         
         console.log(`💰 Remaining player ${remainingPlayer.id} received ₹${this.stake * 2} due to opponent leaving`);
-      } else {
-        // Game was in lobby - just mark as left
+        console.log(`🏃 Player ${playerId} left and lost stake`);
+      } else if (this.state === 'waiting' || this.state === 'lobby') {
+        // Game was in lobby/waiting - just mark as left with no winner
         await prisma.gameSession.updateMany({
           where: { 
             gameId: `${this.gameId}_${playerId}`, 
             userId: playerId 
           },
           data: {
-            status: 'left',
-            result: 'left',
+            status: 'left', // Status is 'left' for lobby leaves
+            result: 'left', // Result is also 'left'
             completedAt: new Date()
           }
         });
         
+        console.log(`✅ Updated lobby leaver ${playerId}: status=left, result=left`);
+        
+        // Return stake to player who left during lobby (optional - depends on your business logic)
         await prisma.transaction.create({
           data: {
             userId: playerId,
-            amount: -this.stake,
-            type: 'game_left',
-            gameId: `${this.gameId}_${playerId}`, // Use unique gameId
-            description: `Six King Game: Left lobby`
+            amount: 0, // You can decide whether to return stake or not
+            type: 'game_lobby_left',
+            gameId: `${this.gameId}_${playerId}`,
+            description: `Six King Game: Left lobby before game started`
           }
         });
       }
@@ -352,26 +368,49 @@ class SixKingGame {
     if (playerIndex === -1) return;
 
     const removedPlayer = this.players[playerIndex];
-    this.players.splice(playerIndex, 1);
     
     console.log(`👋 Player ${removedPlayer.name} left game ${this.gameId}`);
     
-    // Handle database updates for player leaving
+    // Handle database updates for player leaving BEFORE removing from array
     this.handlePlayerLeave(playerId);
+    
+    // Now remove the player from the array
+    this.players.splice(playerIndex, 1);
     
     if (this.state === 'playing' && this.players.length === 1) {
       const remainingPlayer = this.players[0];
+      
+      // Mark game as finished to prevent further moves
+      this.state = 'finished';
+      
       this.broadcast('player_left', {
         leftPlayerId: playerId,
         winner: remainingPlayer.id,
         message: 'Opponent left the game'
       });
-      this.endGame(remainingPlayer.id);
+      
+      // Broadcast game ended message
+      this.broadcast('game_ended', {
+        winner: remainingPlayer.id,
+        finalScores: this.scores,
+        rollCount: this.rollCount,
+        stake: this.stake,
+        reason: 'opponent_left'
+      });
+      
     } else {
       this.broadcast('player_left', {
         leftPlayerId: playerId,
         message: 'Player left the lobby'
       });
+    }
+    
+    // Clean up game if no players left
+    if (this.players.length === 0) {
+      setTimeout(() => {
+        games.delete(this.gameId);
+        console.log(`🧹 Cleaned up empty game ${this.gameId}`);
+      }, 1000);
     }
   }
 
@@ -391,6 +430,11 @@ class SixKingGame {
 
 // Game Manager Functions
 const GameManager = {
+  // Initialize admin cache on server start
+  async initializeAdminCache() {
+    await this.refreshAdminCache();
+  },
+
   // Create a new game
   async createGame(playerData) {
     const gameId = this.generateGameCode();
@@ -404,17 +448,50 @@ const GameManager = {
 
   // Call this once when server starts or when admin status changes
   async refreshAdminCache() {
-    const admins = await prisma.user.findMany({
-      where: { role: 'admin' },
-      select: { id: true }
-    });
-    
-    adminCache.clear();
-    admins.forEach(admin => adminCache.set(admin.id, true));
-    console.log(`🔑 Loaded ${admins.length} admins into cache`);
+    try {
+      // Option 1: If you have a role field in your user table
+      const admins = await prisma.user.findMany({
+        where: { role: 'admin' },
+        select: { id: true }
+      });
+      
+      adminCache.clear();
+      admins.forEach(admin => adminCache.set(admin.id, true));
+      console.log(`🔑 Loaded ${admins.length} admins into cache`);
+      
+    } catch (error) {
+      console.log('⚠️ Role field not found, using hardcoded admin list');
+      // Option 2: Hardcoded admin list (temporary solution)
+      const hardcodedAdmins = [
+        '24b0ae7d-e702-42c6-965e-df6b08a1b3e2', // Add your actual user IDs here
+        // Add more admin user IDs as needed
+      ];
+      
+      adminCache.clear();
+      hardcodedAdmins.forEach(adminId => adminCache.set(adminId, true));
+      console.log(`🔑 Loaded ${hardcodedAdmins.length} hardcoded admins into cache`);
+    }
   },
+
+  // Initialize admin cache on server start
+  async initializeAdminCache() {
+    await this.refreshAdminCache();
+  },
+
   isAdmin(playerId) {
-    return adminCache.has(playerId);
+    const isAdminUser = adminCache.has(playerId);
+    console.log(`🔍 Checking admin status for ${playerId}: ${isAdminUser}`);
+    return isAdminUser;
+  },
+
+  // admin check (for debugging)
+  async checkAdminStatus(playerId) {
+    try {
+      return adminCache.has(playerId);;
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      return null;
+    }
   },
 
   // Join existing game
@@ -483,12 +560,12 @@ const GameManager = {
   },
 
   // Roll dice
-  rollDice(gameId, playerId) {
+  rollDice(gameId, playerId, adminDiceValue = null) {
     const game = games.get(gameId);
     if (!game) {
       throw new Error('Game not found');
     }
-    return game.rollDice(playerId);
+    return game.rollDice(playerId,adminDiceValue);
   },
 
   // Leave game

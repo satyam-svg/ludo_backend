@@ -24,7 +24,6 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
 }));
 
-
 app.use(express.json());
 
 // Request logging
@@ -81,6 +80,17 @@ app.get('/api/games/:gameId', (req, res) => {
     console.error('Error fetching game:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+GameManager.initializeAdminCache().then(() => {
+  console.log('✅ Admin cache initialized');
+}).catch(error => {
+  console.error('❌ Failed to initialize admin cache:', error);
+});
+
+app.get('/api/check/:playerId', async (req, res) => {
+  const result = await GameManager.checkAdminStatus(req.params.playerId);
+  res.json(result);
 });
 
 // Error handling

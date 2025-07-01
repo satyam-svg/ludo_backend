@@ -5,14 +5,16 @@ const moment = require('moment-timezone');
 
 // Slot configurations
 const SLOT_CONFIGS = [
-  { start: '09:00', end: '11:00', name: '9:00 AM - 11:00 AM' },
-  { start: '09:30', end: '11:30', name: '9:30 AM - 11:30 AM' },
-  { start: '11:00', end: '13:00', name: '11:00 AM - 1:00 PM' },
-  { start: '12:00', end: '14:00', name: '12:00 PM - 2:00 PM' },
-  { start: '14:00', end: '16:00', name: '2:00 PM - 4:00 PM' },
-  { start: '15:00', end: '17:00', name: '3:00 PM - 5:00 PM' },
-  { start: '17:00', end: '19:00', name: '5:00 PM - 7:00 PM' },
-  { start: '18:00', end: '20:00', name: '6:00 PM - 8:00 PM' }
+  { start: '00:00', end: '06:00', name: '12:00 AM - 6:00 AM' },   // 6-hour slot
+  { start: '06:00', end: '09:30', name: '6:00 AM - 9:30 AM' },   // 3.5 hours
+  { start: '09:30', end: '13:00', name: '9:30 AM - 1:00 PM' },   // 3.5 hours
+  { start: '13:00', end: '16:00', name: '1:00 PM - 4:00 PM' },   // 3 hours
+  { start: '16:00', end: '19:00', name: '4:00 PM - 7:00 PM' },   // 3 hours
+  { start: '19:00', end: '22:00', name: '7:00 PM - 10:00 PM' },  // 3 hours
+  { start: '22:00', end: '00:00', name: '10:00 PM - 12:00 AM' }, // 2 hours
+  { start: '08:00', end: '12:00', name: '8:00 AM - 12:00 PM' },  // 4 hours
+  { start: '14:00', end: '18:00', name: '2:00 PM - 6:00 PM' },   // 4 hours
+  { start: '20:00', end: '24:00', name: '8:00 PM - 12:00 AM' }   // 4 hours
 ];
 
 // Generate secure random number
@@ -86,8 +88,29 @@ const updateSlotStatuses = async () => {
         
         // Generate result if slot just closed and doesn't have a result
         if (slot.status !== 'closed' && slot.result === null) {
-          const winningNumber = secureRandom(0, 9);
-          
+          // const winningNumber = secureRandom(0, 9);
+          const allBets = await prisma.matkaBet.findMany({
+          where: { matkaSlotId: slot.id },
+          select: {
+            stakeAmount: true,
+            selectedNumber: true
+            }
+          });
+
+          const stakes = new Map();
+          const counts = new Map();
+          let totalBet = 0;
+
+          for (const { stakeAmount, selectedNumber } of allBets) {
+            totalBet += stakeAmount;
+            stakes.set(selectedNumber, (stakes.get(selectedNumber) || 0) + stakeAmount);
+            counts.set(selectedNumber, (counts.get(selectedNumber) || 0) + 1);
+          }
+
+          const winningNumber = Array.from({length: 10}, (_, i) => i)
+            .sort((a, b) => (counts.get(b) || 0) - (counts.get(a) || 0))
+            .find(number => (stakes.get(number) || 0) * 10 <= totalBet);
+
           await prisma.matkaSlot.update({
             where: { id: slot.id },
             data: { 
