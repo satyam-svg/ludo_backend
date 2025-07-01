@@ -84,7 +84,7 @@ const getDynamicFakeParticipants = (slot, realCount) => {
   const now = moment().tz('Asia/Kolkata');
   const currentTime = now.format('HH:mm');
   
-  // Calculate how long the slot has been open
+  // Calculate how long the slot has been open (in minutes)
   const slotStartTime = moment(slot.startTime, 'HH:mm');
   const slotEndTime = moment(slot.endTime, 'HH:mm');
   
@@ -98,49 +98,78 @@ const getDynamicFakeParticipants = (slot, realCount) => {
     currentMoment.add(1, 'day');
   }
   
-  // Calculate progress through the slot (0 to 1)
-  const totalDuration = slotEndTime.diff(slotStartTime, 'minutes');
-  const elapsedTime = currentMoment.diff(slotStartTime, 'minutes');
-  const progress = Math.max(0, Math.min(1, elapsedTime / totalDuration));
+  // Calculate elapsed minutes since slot opened
+  const elapsedMinutes = Math.max(0, currentMoment.diff(slotStartTime, 'minutes'));
+  const totalDurationMinutes = slotEndTime.diff(slotStartTime, 'minutes');
   
-  // Gradual increase curve: starts at ~50, grows to 200-300, then plateaus
-  let participantCount;
+  let fakeParticipants = 0;
   
-  if (progress <= 0.3) {
-    // First 30% of slot duration: gradual increase from 50 to 120
-    participantCount = 50 + (progress / 0.3) * 70;
-  } else if (progress <= 0.7) {
-    // Middle 40% of slot duration: steady increase from 120 to 250
-    const midProgress = (progress - 0.3) / 0.4;
-    participantCount = 120 + midProgress * 130;
+  // Realistic participant growth timeline (targeting 150-300 final):
+  if (elapsedMinutes < 5) {
+    // First 5 minutes: 0 participants (slot just opened)
+    fakeParticipants = 0;
+  } else if (elapsedMinutes < 10) {
+    // Minutes 5-10: Add 5-8 participants (early adopters)
+    fakeParticipants = secureRandom(5, 8);
+  } else if (elapsedMinutes < 20) {
+    // Minutes 10-20: Add 3-5 every 2 minutes (word spreading)
+    const intervals = Math.floor((elapsedMinutes - 10) / 2);
+    fakeParticipants = 8 + (intervals * secureRandom(3, 5));
+  } else if (elapsedMinutes < 40) {
+    // Minutes 20-40: Add 4-7 every 3 minutes (main growth phase)
+    const baseCount = 8 + Math.floor(10 / 2) * 4; // ~28 from previous phase
+    const intervals = Math.floor((elapsedMinutes - 20) / 3);
+    fakeParticipants = Math.floor(baseCount + (intervals * secureRandom(4, 7)));
+  } else if (elapsedMinutes < 60) {
+    // Minutes 40-60: Add 3-5 every 4 minutes (continued growth)
+    const baseCount = 70; // Approximate from previous phases
+    const intervals = Math.floor((elapsedMinutes - 40) / 4);
+    fakeParticipants = baseCount + (intervals * secureRandom(3, 5));
+  } else if (elapsedMinutes < 90) {
+    // Minutes 60-90: Add 2-4 every 5 minutes (slower growth)
+    const baseCount = 110; // Approximate from previous phases
+    const intervals = Math.floor((elapsedMinutes - 60) / 5);
+    fakeParticipants = baseCount + (intervals * secureRandom(2, 4));
   } else {
-    // Last 30% of slot duration: plateau between 250-300 with small fluctuations
-    const endProgress = (progress - 0.7) / 0.3;
-    const baseCount = 250 + endProgress * 50;
-    
-    // Add small fluctuations during plateau phase
-    const minute = now.minute();
-    const fluctuation = Math.sin(minute / 5) * 10; // ±10 participants
-    participantCount = baseCount + fluctuation;
+    // After 90 minutes: Plateau phase (150-200 base) + occasional +1-2
+    const baseCount = secureRandom(150, 200);
+    const occasionalAdd = Math.floor((elapsedMinutes - 90) / 10) * secureRandom(0, 2);
+    fakeParticipants = baseCount + occasionalAdd;
   }
   
-  // Add some randomness based on slot ID for consistency
+  // Add slot-specific variance (consistent per slot)
   const slotSeed = parseInt(slot.slotId.replace(/\D/g, '') || '1');
-  const randomVariance = (slotSeed % 20) - 10; // ±10 variance per slot
+  const slotVariance = (slotSeed % 20) - 10; // ±10 variance per slot
   
-  // Peak time bonus (smaller bonus during plateau)
+  // Peak time bonus (significant boost during busy hours)
   const hour = now.hour();
   let peakBonus = 0;
-  if ((hour >= 9 && hour <= 12) || (hour >= 14 && hour <= 18) || (hour >= 20 && hour <= 23)) {
-    peakBonus = progress <= 0.7 ? 30 : 10; // Less bonus during plateau
+  if (elapsedMinutes >= 20 && ((hour >= 9 && hour <= 12) || (hour >= 14 && hour <= 18) || (hour >= 20 && hour <= 23))) {
+    // Progressive peak bonus: more bonus as time passes
+    if (elapsedMinutes >= 60) {
+      peakBonus = secureRandom(30, 50); // Major bonus for established slots
+    } else if (elapsedMinutes >= 40) {
+      peakBonus = secureRandom(20, 35); // Medium bonus for growing slots
+    } else {
+      peakBonus = secureRandom(10, 20); // Small bonus for new slots
+    }
   }
   
-  const finalCount = Math.floor(participantCount + randomVariance + peakBonus);
+  // Calculate final fake count
+  const finalFakeCount = Math.max(0, fakeParticipants + slotVariance + peakBonus);
   
-  // Ensure count is between 50-300 and add real participants
-  const boundedFakeCount = Math.max(50, Math.min(300, finalCount));
+  // Ensure we stay in 150-300 range for mature slots (60+ minutes)
+  let cappedFakeCount;
+  if (elapsedMinutes >= 60) {
+    cappedFakeCount = Math.max(150, Math.min(300, finalFakeCount));
+  } else {
+    // Allow natural growth for newer slots
+    cappedFakeCount = Math.min(finalFakeCount, 300);
+  }
   
-  return realCount + boundedFakeCount;
+  console.log(`Slot ${slot.slotId}: ${elapsedMinutes}min elapsed, ${cappedFakeCount} fake + ${realCount} real = ${realCount + cappedFakeCount} total`);
+  
+  return realCount + cappedFakeCount;
 };
 
 // Initialize daily slots in database
