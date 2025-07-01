@@ -25,6 +25,124 @@ const secureRandom = (min, max) => {
   return min + (randomValue % (max - min + 1));
 };
 
+// Function to generate fake participants count based on slot status and time
+const generateFakeParticipants = (slot, realParticipants) => {
+  // For upcoming slots, return only real participants (should be 0 since disabled)
+  if (slot.status === 'upcoming') {
+    return realParticipants; // No fake participants for disabled slots
+  }
+  
+  const now = moment().tz('Asia/Kolkata');
+  const currentTime = now.format('HH:mm');
+  
+  let baseCount = 0;
+  let multiplier = 1;
+  
+  // Different base counts based on slot status
+  switch (slot.status) {
+    case 'open':
+      // This case is handled by getDynamicFakeParticipants
+      baseCount = secureRandom(150, 250);
+      multiplier = 1.0;
+      break;
+    case 'closed':
+      // Closed slots show final count
+      baseCount = secureRandom(200, 400);
+      multiplier = 1.0;
+      break;
+    default:
+      baseCount = secureRandom(20, 80);
+  }
+  
+  // Add time-based variance (more participants during peak hours)
+  const hour = parseInt(currentTime.split(':')[0]);
+  let timeMultiplier = 1.0;
+  
+  // Peak hours: 9-12 AM, 2-6 PM, 8-11 PM
+  if ((hour >= 9 && hour <= 12) || (hour >= 14 && hour <= 18) || (hour >= 20 && hour <= 23)) {
+    timeMultiplier = 1.2;
+  }
+  // Low hours: 12-6 AM
+  else if (hour >= 0 && hour <= 6) {
+    timeMultiplier = 0.8;
+  }
+  
+  // Calculate fake count
+  const fakeCount = Math.floor(baseCount * multiplier * timeMultiplier);
+  
+  // Always add real participants to fake count
+  const totalParticipants = realParticipants + fakeCount;
+  
+  // Add some randomness to make it look more realistic
+  const variance = secureRandom(-10, 15);
+  
+  return Math.max(totalParticipants + variance, realParticipants);
+};
+
+// Function to generate dynamic fake participants for open slots
+const getDynamicFakeParticipants = (slot, realCount) => {
+  const now = moment().tz('Asia/Kolkata');
+  const currentTime = now.format('HH:mm');
+  
+  // Calculate how long the slot has been open
+  const slotStartTime = moment(slot.startTime, 'HH:mm');
+  const slotEndTime = moment(slot.endTime, 'HH:mm');
+  
+  // Handle slots that cross midnight
+  if (slotEndTime.isBefore(slotStartTime)) {
+    slotEndTime.add(1, 'day');
+  }
+  
+  const currentMoment = moment(currentTime, 'HH:mm');
+  if (currentMoment.isBefore(slotStartTime)) {
+    currentMoment.add(1, 'day');
+  }
+  
+  // Calculate progress through the slot (0 to 1)
+  const totalDuration = slotEndTime.diff(slotStartTime, 'minutes');
+  const elapsedTime = currentMoment.diff(slotStartTime, 'minutes');
+  const progress = Math.max(0, Math.min(1, elapsedTime / totalDuration));
+  
+  // Gradual increase curve: starts at ~50, grows to 200-300, then plateaus
+  let participantCount;
+  
+  if (progress <= 0.3) {
+    // First 30% of slot duration: gradual increase from 50 to 120
+    participantCount = 50 + (progress / 0.3) * 70;
+  } else if (progress <= 0.7) {
+    // Middle 40% of slot duration: steady increase from 120 to 250
+    const midProgress = (progress - 0.3) / 0.4;
+    participantCount = 120 + midProgress * 130;
+  } else {
+    // Last 30% of slot duration: plateau between 250-300 with small fluctuations
+    const endProgress = (progress - 0.7) / 0.3;
+    const baseCount = 250 + endProgress * 50;
+    
+    // Add small fluctuations during plateau phase
+    const minute = now.minute();
+    const fluctuation = Math.sin(minute / 5) * 10; // ±10 participants
+    participantCount = baseCount + fluctuation;
+  }
+  
+  // Add some randomness based on slot ID for consistency
+  const slotSeed = parseInt(slot.slotId.replace(/\D/g, '') || '1');
+  const randomVariance = (slotSeed % 20) - 10; // ±10 variance per slot
+  
+  // Peak time bonus (smaller bonus during plateau)
+  const hour = now.hour();
+  let peakBonus = 0;
+  if ((hour >= 9 && hour <= 12) || (hour >= 14 && hour <= 18) || (hour >= 20 && hour <= 23)) {
+    peakBonus = progress <= 0.7 ? 30 : 10; // Less bonus during plateau
+  }
+  
+  const finalCount = Math.floor(participantCount + randomVariance + peakBonus);
+  
+  // Ensure count is between 50-300 and add real participants
+  const boundedFakeCount = Math.max(50, Math.min(300, finalCount));
+  
+  return realCount + boundedFakeCount;
+};
+
 // Initialize daily slots in database
 const initializeDailySlots = async () => {
   try {
@@ -88,7 +206,6 @@ const updateSlotStatuses = async () => {
         
         // Generate result if slot just closed and doesn't have a result
         if (slot.status !== 'closed' && slot.result === null) {
-          // const winningNumber = secureRandom(0, 9);
           const allBets = await prisma.matkaBet.findMany({
           where: { matkaSlotId: slot.id },
           select: {
@@ -204,7 +321,7 @@ const processSlotResults = async (slotId, winningNumber) => {
   }
 };
 
-// Get all available slots
+// Get all available slots WITH FAKE PARTICIPANTS
 exports.getSlots = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -239,9 +356,23 @@ exports.getSlots = async (req, res) => {
       }
     });
     
-    // Format response data
+    // Format response data with fake participants
     const formattedSlots = slots.map(slot => {
       const userBet = slot.bets.length > 0 ? slot.bets[0] : null;
+      const realParticipants = slot._count.bets;
+      
+      // Generate participants based on slot status
+      let totalParticipants;
+      if (slot.status === 'upcoming') {
+        // Upcoming slots show only real participants (should be 0 since disabled)
+        totalParticipants = realParticipants;
+      } else if (slot.status === 'open') {
+        // For open slots, use dynamic fake participants with gradual increase
+        totalParticipants = getDynamicFakeParticipants(slot, realParticipants);
+      } else {
+        // For closed slots, use static fake participants
+        totalParticipants = generateFakeParticipants(slot, realParticipants);
+      }
       
       // Convert time strings to decimal for frontend compatibility
       const startTimeDecimal = timeStringToDecimal(slot.startTime);
@@ -251,7 +382,7 @@ exports.getSlots = async (req, res) => {
         id: slot.id,
         name: slot.slotName,
         status: slot.status,
-        participants: slot._count.bets,
+        participants: totalParticipants,
         winningNumber: slot.result,
         payout: 10,
         startTime: startTimeDecimal,
