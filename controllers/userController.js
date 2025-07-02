@@ -6,7 +6,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY; // Replace with your actual API key
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY;
 
 const otpStore = {};
 
@@ -53,12 +53,86 @@ const sendOTP = async (phoneNumber, otp) => {
   }
 };
 
-// Signup controller
+// Process referral bonus when referred user makes first deposit
+const processReferralBonus = async (userId, depositAmount) => {
+  try {
+    // Check if this user was referred
+    const referralRecord = await prisma.referral.findUnique({
+      where: { refereeId: userId },
+      include: { referrer: true }
+    });
+
+    if (!referralRecord) {
+      console.log(`No referral found for user ${userId}`);
+      return null;
+    }
+
+    // Check if this is the first deposit
+    const previousDeposits = await prisma.transaction.count({
+      where: {
+        userId: userId,
+        type: 'deposit',
+        createdAt: { lt: new Date() }
+      }
+    });
+
+    if (previousDeposits > 1) {
+      console.log(`User ${userId} already made deposits before`);
+      return null;
+    }
+
+    // Check if bonus already given to referrer
+    const existingBonus = await prisma.transaction.findFirst({
+      where: {
+        userId: referralRecord.referrerId,
+        type: 'referral_bonus',
+        description: { contains: userId }
+      }
+    });
+
+    if (existingBonus) {
+      console.log(`Referral bonus already given for ${userId}`);
+      return null;
+    }
+
+    const referrerBonus = 50;
+
+    // Give bonus only to referrer
+    const result = await prisma.$transaction(async (prisma) => {
+      // Give bonus to referrer only
+      await prisma.user.update({
+        where: { id: referralRecord.referrerId },
+        data: { wallet: { increment: referrerBonus } }
+      });
+
+      // Create transaction record for referrer only
+      await prisma.transaction.create({
+        data: {
+          userId: referralRecord.referrerId,
+          amount: referrerBonus,
+          type: 'referral_bonus',
+          description: `Referral bonus for referring user ${userId}`
+        }
+      });
+
+      return { referrerBonus };
+    });
+
+    console.log(`💰 Referral bonus processed: Referrer got ₹${referrerBonus}`);
+    return result;
+
+  } catch (error) {
+    console.error('Error processing referral bonus:', error);
+    return null;
+  }
+};
+
+// Signup controller - minimal changes
 const signup = async (req, res) => {
   try {
     const { phoneNumber, password, referralCode } = req.body;
 
-    // Validate phone number format (basic validation)
+    // Validate phone number format
     const phoneRegex = /^[6-9]\d{9}$/;
     if (!phoneNumber || !phoneRegex.test(phoneNumber)) {
       return res.status(400).json({ error: 'Valid phone number is required (10 digits starting with 6-9)' });
@@ -74,6 +148,17 @@ const signup = async (req, res) => {
       return res.status(400).json({ error: 'Phone number already registered' });
     }
 
+    // Validate referral code if provided
+    if (referralCode) {
+      const referrer = await prisma.user.findFirst({
+        where: { referralCode: referralCode }
+      });
+      
+      if (!referrer) {
+        return res.status(400).json({ error: 'Invalid referral code' });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Generate 6-digit OTP
@@ -84,14 +169,15 @@ const signup = async (req, res) => {
       digits: true
     });
 
-    // Store OTP temporarily
+    // Store OTP temporarily with referral code
     otpStore[phoneNumber] = {
       otp,
       expiresAt: Date.now() + 300000, // 5 minutes
       password: hashedPassword,
-      referralCode
+      referralCode: referralCode || null
     };
 
+    // console.log(otp);
     // Send OTP via Fast2SMS
     await sendOTP(phoneNumber, otp);
 
@@ -106,7 +192,7 @@ const signup = async (req, res) => {
   }
 };
 
-// Verify OTP controller
+// Verify OTP controller - create referral relationship and give signup bonus to everyone
 const verifyOtp = async (req, res) => {
   const { phoneNumber, otp } = req.body;
 
@@ -127,17 +213,34 @@ const verifyOtp = async (req, res) => {
 
   try {
     const referralCode = await generateReferralCode();
+    const signupBonus = 50; // Everyone gets ₹50 on signup
 
-    const user = await prisma.user.create({
-      data: {
-        phoneNumber,
-        password: storedData.password,
-        wallet: 0,
-        referralCode
-      }
+    // Create user with signup bonus
+    const user = await prisma.$transaction(async (prisma) => {
+      // Create user
+      const newUser = await prisma.user.create({
+        data: {
+          phoneNumber,
+          password: storedData.password,
+          wallet: signupBonus, // Give signup bonus immediately
+          referralCode
+        }
+      });
+
+      // Create signup bonus transaction
+      await prisma.transaction.create({
+        data: {
+          userId: newUser.id,
+          amount: signupBonus,
+          type: 'signup_bonus',
+          description: 'Welcome bonus for new user'
+        }
+      });
+
+      return newUser;
     });
 
-    // Handle referral bonus if referral code was provided
+    // Create referral relationship if referral code was provided (no bonus yet)
     if (storedData.referralCode) {
       const referrer = await prisma.user.findFirst({
         where: { referralCode: storedData.referralCode }
@@ -146,39 +249,11 @@ const verifyOtp = async (req, res) => {
       if (referrer && referrer.id !== user.id) {
         await prisma.referral.create({
           data: {
-            referrer: { connect: { id: referrer.id } },
-            referee: { connect: { id: user.id } }
+            referrerId: referrer.id,
+            refereeId: user.id
           }
         });
-
-        const bonusAmount = 10;
-
-        // Update wallet balances
-        await prisma.user.update({
-          where: { id: referrer.id },
-          data: { wallet: { increment: bonusAmount } }
-        });
-
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { wallet: { increment: bonusAmount } }
-        });
-
-        // Create transaction records
-        await prisma.transaction.createMany({
-          data: [
-            {
-              userId: referrer.id,
-              amount: bonusAmount,
-              type: 'referral_bonus'
-            },
-            {
-              userId: user.id,
-              amount: bonusAmount,
-              type: 'referral_bonus'
-            }
-          ]
-        });
+        console.log(`✅ Referral relationship created: ${referrer.id} -> ${user.id}`);
       }
     }
 
@@ -190,7 +265,9 @@ const verifyOtp = async (req, res) => {
 
     return res.status(201).json({
       message: 'Account created successfully',
-      token
+      token,
+      signupBonus: signupBonus,
+      referralApplied: !!storedData.referralCode
     });
 
   } catch (error) {
@@ -199,7 +276,7 @@ const verifyOtp = async (req, res) => {
   }
 };
 
-// Login controller
+// Login controller - unchanged
 const login = async (req, res) => {
   try {
     const { phoneNumber, password } = req.body;
@@ -231,7 +308,7 @@ const login = async (req, res) => {
   }
 };
 
-// Resend OTP controller (optional but useful)
+// Resend OTP controller - unchanged
 const resendOtp = async (req, res) => {
   try {
     const { phoneNumber } = req.body;
@@ -274,7 +351,7 @@ const resendOtp = async (req, res) => {
   }
 };
 
-// Get user data
+// Get user data - add referral stats
 const getUserData = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
@@ -284,7 +361,6 @@ const getUserData = async (req, res) => {
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
-    // console.log("Decoded user:", decoded);
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -295,21 +371,36 @@ const getUserData = async (req, res) => {
         referralCode: true,
       }
     });
-    // console.log(user);
 
     if (!user) return res.status(404).json({ error: 'User not found' });
 
-    return res.status(200).json(user);
+    // Get simple referral stats
+    const totalReferrals = await prisma.referral.count({
+      where: { referrerId: user.id }
+    });
+
+    const referralEarnings = await prisma.transaction.aggregate({
+      where: {
+        userId: user.id,
+        type: 'referral_bonus'
+      },
+      _sum: { amount: true }
+    });
+
+    return res.status(200).json({
+      ...user,
+      totalReferrals,
+      referralEarnings: referralEarnings._sum.amount || 0
+    });
   } catch (error) {
     console.error("Token validation error:", error.message);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
 
-
-// Raw SQL approach (if you prefer SQL)
+// Games history - unchanged
 const gamesHistory = async (req, res) => {
-   try {
+  try {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
       return res.status(401).json({ error: 'No token provided' });
@@ -406,5 +497,6 @@ module.exports = {
   login,
   getUserData,
   resendOtp,
-  gamesHistory
+  gamesHistory,
+  processReferralBonus // Export this for use in wallet controller
 };

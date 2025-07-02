@@ -1,6 +1,9 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Import the referral bonus function from userController
+const { processReferralBonus } = require('./userController');
+
 class WalletController {
   // Helper method to check wallet balance
   static async checkWalletBalance(userId) {
@@ -129,7 +132,7 @@ class WalletController {
     }
   }
 
-  // Deposit money to wallet
+  // Updated deposit method with referral bonus processing
   static async deposit(req, res) {
     try {
       const { amount, paymentMethod, transactionReference } = req.body;
@@ -187,6 +190,25 @@ class WalletController {
         return { updatedUser, transaction };
       });
 
+      // Process referral bonus after successful deposit (won't fail deposit if this fails)
+      let referralBonusProcessed = false;
+      try {
+        const referralResult = await processReferralBonus(userId, depositAmount);
+        if (referralResult) {
+          referralBonusProcessed = true;
+          console.log(`🎉 Referral bonus processed for deposit by user ${userId}`);
+        }
+      } catch (referralError) {
+        console.error('Error processing referral bonus:', referralError);
+        // Don't fail the deposit if referral processing fails
+      }
+
+      // Get final balance (might be updated if referral bonus was processed)
+      const finalUser = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { wallet: true }
+      });
+
       console.log(`💰 Deposit successful: User ${userId} deposited ₹${depositAmount}`);
 
       res.json({
@@ -195,14 +217,15 @@ class WalletController {
         wallet: {
           previousBalance: user.wallet,
           depositAmount,
-          newBalance: result.updatedUser.wallet
+          newBalance: finalUser.wallet
         },
         transaction: {
           id: result.transaction.id,
           amount: result.transaction.amount,
           type: result.transaction.type,
           createdAt: result.transaction.createdAt
-        }
+        },
+        referralBonusProcessed // Let frontend know if referral bonus was given
       });
 
     } catch (error) {
@@ -410,7 +433,7 @@ class WalletController {
     }
   }
 
-  // Get wallet summary/statistics
+  // Updated wallet summary with referral earnings
   static async getWalletSummary(req, res) {
     try {
       const userId = req.user.id;
@@ -449,6 +472,19 @@ class WalletController {
         _count: true
       });
 
+      // Get referral earnings
+      const referralEarnings = await prisma.transaction.aggregate({
+        where: { userId, type: 'referral_bonus' },
+        _sum: { amount: true },
+        _count: true
+      });
+
+      // Get signup bonus
+      const signupBonus = await prisma.transaction.aggregate({
+        where: { userId, type: 'signup_bonus' },
+        _sum: { amount: true }
+      });
+
       res.json({
         success: true,
         summary: {
@@ -460,6 +496,11 @@ class WalletController {
             amount: pendingWithdrawals._sum.amount || 0,
             count: pendingWithdrawals._count || 0
           },
+          referralEarnings: {
+            amount: referralEarnings._sum.amount || 0,
+            count: referralEarnings._count || 0
+          },
+          signupBonus: signupBonus._sum.amount || 0,
           availableBalance: user.wallet - (pendingWithdrawals._sum.amount || 0)
         }
       });
