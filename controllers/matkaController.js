@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 
-// Slot configurations
+// Slot configurations change is required
 const SLOT_CONFIGS = [
   { start: '00:00', end: '06:00', name: '12:00 AM - 6:00 AM' },   // 6-hour slot
   { start: '06:00', end: '09:30', name: '6:00 AM - 9:30 AM' },   // 3.5 hours
