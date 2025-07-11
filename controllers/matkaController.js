@@ -4,7 +4,7 @@ const cron = require('node-cron');
 
 // Slot configuration - 7 slots per day, 3.5 hours each
 const DAILY_SLOT_CONFIGS = [
-  { name: '12:00 AM - 3:30 AM', startHour: 0, startMinute: 0, durationHours: 3.5 },
+  { name: '12:30 AM - 3:30 AM', startHour: 0, startMinute: 0, durationHours: 3.5 },
   { name: '3:30 AM - 7:00 AM', startHour: 3, startMinute: 30, durationHours: 3.5 },
   { name: '7:00 AM - 10:30 AM', startHour: 7, startMinute: 0, durationHours: 3.5 },
   { name: '10:30 AM - 2:00 PM', startHour: 10, startMinute: 30, durationHours: 3.5 },
