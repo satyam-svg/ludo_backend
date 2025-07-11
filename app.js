@@ -5,7 +5,6 @@ const WebSocket = require('ws');
 
 // Import routes
 const userRoutes = require('./routes/userRoutes');
-const walletRoutes = require('./routes/walletRoutes');
 const luckyNumberRoutes = require('./routes/luckyNumberRoutes');
 const matkaRoutes = require('./routes/matkaRoutes');
 const snakeRoutes = require('./routes/snakeRoutes');
@@ -43,10 +42,9 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/users', userRoutes);
-app.use('/api/wallet', walletRoutes.router);
 app.use('/api/lucky-number', luckyNumberRoutes);
 app.use('/api/snake-game', snakeRoutes);
-app.use('/api/matka-king', matkaRoutes);
+app.use('/api/matka', matkaRoutes);
 app.use('/api/payment',paymentRoutes)
 
 // Game API Routes

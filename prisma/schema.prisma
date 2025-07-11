@@ -92,18 +92,18 @@ model GameSession {
 }
 
 model MatkaSlot {
-  id        String     @id @default(uuid())
-  slotId    String
-  slotName  String
-  slotDate  DateTime
-  startTime String
-  endTime   String
-  status    String
-  result    Int?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  bets      MatkaBet[]
+  id          String     @id @default(uuid())
+  slotName    String     // e.g., "6:00 AM - 9:30 AM"
+  startTime   DateTime   // Full datetime when slot opens
+  endTime     DateTime   // Full datetime when slot closes
+  status      String     // 'upcoming', 'open', 'closed'
+  result      Int?       // Winning number (0-9)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  bets        MatkaBet[]
 
+  // Ensure unique slots per time period
+  @@unique([startTime, endTime])
   @@map("matka_slots")
 }
 
@@ -111,13 +111,16 @@ model MatkaBet {
   id             String    @id @default(uuid())
   userId         String
   matkaSlotId    String
-  selectedNumber Int
+  selectedNumber Int       // 0-9
   stakeAmount    Float
-  winAmount      Float?
-  status         String
+  winAmount      Float?    // Set when game ends
+  status         String    // 'pending', 'won', 'lost'
   createdAt      DateTime  @default(now())
   slot           MatkaSlot @relation(fields: [matkaSlotId], references: [id])
   user           User      @relation(fields: [userId], references: [id])
 
+  // Ensure one bet per user per slot
+  @@unique([userId, matkaSlotId])
   @@map("matka_bets")
 }
+

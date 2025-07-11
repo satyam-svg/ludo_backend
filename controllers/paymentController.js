@@ -5,7 +5,7 @@ class PaymentController {
 
   static async createPendingDeposit(req, res) {
       try {
-        const { amount, paymentMethod , indetifier} = req.body;
+        const { amount, paymentMethod , identifier} = req.body;
         const userId = req.user.id;
         // Check if user exists
         const user = await prisma.user.findUnique({
@@ -16,13 +16,14 @@ class PaymentController {
           return res.status(404).json({ error: 'User not found' });
         }
 
+
         // Create transaction record
         const transaction = await prisma.transaction.create({
           data: {
             userId,
             amount: amount,
             type: 'deposit_pending',
-            description: `Deposit via ${paymentMethod} and identifier ${indetifier}`,
+            description: `Deposit via ${paymentMethod} and identifier ${identifier}`,
           }
         });
 
@@ -226,13 +227,14 @@ class PaymentController {
               data: { wallet: { decrement: amount } }
             });
 
+
       // Create transaction record
       const transaction = await prisma.transaction.create({
         data: {
           userId,
           amount: -amount, // Negative for withdrawal
           type: 'withdrawal_pending',
-          description: `Withdrawal via ${withdrawalMethod} - ${JSON.stringify(accountDetails)}`,
+          description: `Withdrawal via ${accountDetails.upiId} - ${accountDetails.phoneNumber}`,
         }
       });
 
