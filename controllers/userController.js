@@ -71,7 +71,7 @@ const processReferralBonus = async (userId, depositAmount) => {
     const previousDeposits = await prisma.transaction.count({
       where: {
         userId: userId,
-        type: 'deposit',
+        type: 'deposit-completed',
         createdAt: { lt: new Date() }
       }
     });

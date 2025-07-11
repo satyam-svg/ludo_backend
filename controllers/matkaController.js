@@ -509,9 +509,9 @@ cron.schedule('0 0 * * *', () => {
 });
 
 // Update slot statuses every minute
-cron.schedule('* * * * *', () => {
-  updateSlotStatuses();
-});
+// cron.schedule('* * * * *', () => {
+//   updateSlotStatuses();
+// });
 
 // Initialize system on startup
 initializeSystem();
